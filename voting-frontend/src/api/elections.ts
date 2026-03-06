@@ -15,6 +15,7 @@ export interface Candidate {
   name: string
   description: string
   party: string
+  motto: string
   election: number
   vote_count?: number
 }
@@ -28,6 +29,7 @@ export interface VoteResult {
   id: number
   name: string
   party: string
+  motto: string
   description: string
   vote_count: number
   percentage: number
@@ -82,4 +84,24 @@ export async function updateElection(id: number, payload: Partial<Election>): Pr
 export async function createCandidate(payload: { name: string; party: string; description: string; election: number }) {
   const { data } = await client.post('/admin/candidates/', payload)
   return data
+}
+
+// Superuser endpoints
+export async function superuserGetCandidates(): Promise<Candidate[]> {
+  const { data } = await client.get<Candidate[]>('/superuser/candidates/')
+  return data
+}
+
+export async function superuserCreateCandidate(payload: { name: string; party: string; motto: string; description?: string; election: number }): Promise<Candidate> {
+  const { data } = await client.post<Candidate>('/superuser/candidates/', payload)
+  return data
+}
+
+export async function superuserUpdateCandidate(id: number, payload: Partial<Candidate>): Promise<Candidate> {
+  const { data } = await client.patch<Candidate>(`/superuser/candidates/${id}/`, payload)
+  return data
+}
+
+export async function superuserDeleteCandidate(id: number): Promise<void> {
+  await client.delete(`/superuser/candidates/${id}/`)
 }

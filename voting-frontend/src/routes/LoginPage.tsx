@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
@@ -10,6 +10,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const color = localStorage.getItem('theme-color') || 'purple'
+    const mode  = localStorage.getItem('theme-mode')  || 'dark'
+    document.documentElement.setAttribute('data-theme', `${color}-${mode}`)
+  }, [])
 
   if (isAuthenticated) return <Navigate to="/vote" replace />
 
@@ -33,14 +39,14 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-grid flex items-center justify-center p-4 relative overflow-hidden"
-      style={{ background: 'var(--navy)' }}>
+      style={{ background: 'var(--bg)' }}>
       <div className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 40%, rgba(212,168,67,0.06) 0%, transparent 70%)' }} />
+        style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 40%, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 70%)' }} />
 
       <div className="w-full max-w-md fade-up relative">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-sm mb-6 text-2xl font-bold display-font"
-            style={{ background: 'var(--gold)', color: 'var(--navy)', boxShadow: '0 0 40px rgba(212,168,67,0.3)' }}>
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-sm mb-6 text-2xl font-bold"
+            style={{ background: 'var(--accent)', color: 'var(--bg)', boxShadow: '0 0 40px color-mix(in srgb, var(--accent) 35%, transparent)' }}>
             ✦
           </div>
           <h1 className="display-font text-4xl font-black mb-2" style={{ color: 'var(--cream)' }}>VoteApp</h1>
@@ -68,11 +74,11 @@ export default function LoginPage() {
             </div>
             {error && (
               <div className="flex items-center gap-2 px-4 py-3 rounded-sm text-sm"
-                style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171' }}>
+                style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)', color: 'var(--danger)' }}>
                 <span>⚠</span> {error}
               </div>
             )}
-            <button type="submit" disabled={loading} className="btn-gold w-full py-3.5 text-base mt-2">
+            <button type="submit" disabled={loading} className="btn-accent w-full py-3.5 text-base mt-2">
               {loading
                 ? <><span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Authenticating…</>
                 : 'Sign In →'}

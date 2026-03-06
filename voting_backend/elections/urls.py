@@ -12,4 +12,7 @@ urlpatterns = [
     path('admin/elections/<int:election_id>/', views.AdminElectionDetailView.as_view(), name='admin-election-detail'),
     path('admin/elections/<int:election_id>/results/', views.AdminElectionResultsView.as_view(), name='admin-results'),
     path('admin/candidates/', views.AdminCandidateListCreateView.as_view(), name='admin-candidates'),
+    # Superuser-only endpoints
+    path('superuser/candidates/', views.SuperuserCandidateCreateView.as_view(), name='superuser-candidates'),
+    path('superuser/candidates/<int:candidate_id>/', views.SuperuserCandidateDetailView.as_view(), name='superuser-candidate-detail'),
 ]

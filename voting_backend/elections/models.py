@@ -6,6 +6,7 @@ class CustomUser(AbstractUser):
     class Role(models.TextChoices):
         USER = 'USER', 'User'
         ADMIN = 'ADMIN', 'Admin'
+        SUPERUSER = 'SUPERUSER', 'Superuser'
 
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.USER)
     email = models.EmailField(unique=True)
@@ -15,7 +16,11 @@ class CustomUser(AbstractUser):
 
     @property
     def is_admin_user(self):
-        return self.role == self.Role.ADMIN
+        return self.role in (self.Role.ADMIN, self.Role.SUPERUSER)
+
+    @property
+    def is_super_user_role(self):
+        return self.role == self.Role.SUPERUSER
 
 
 class Election(models.Model):
@@ -36,6 +41,7 @@ class Candidate(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     party = models.CharField(max_length=255, blank=True)
+    motto = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import CustomUser, Election, Candidate, Vote
+from django.utils import timezone
+import datetime
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -35,8 +37,28 @@ class CandidateSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
+class FlexibleDateTimeField(serializers.DateTimeField):
+    """Accepts both naive datetime-local strings and full ISO strings."""
+    def to_internal_value(self, value):
+        # Strip trailing Z or +00:00 variants, try multiple formats
+        for fmt in [
+            '%Y-%m-%dT%H:%M',
+            '%Y-%m-%dT%H:%M:%S',
+            '%Y-%m-%dT%H:%M:%SZ',
+            '%Y-%m-%dT%H:%M:%S.%f',
+        ]:
+            try:
+                dt = datetime.datetime.strptime(value.rstrip('Z'), fmt.rstrip('Z'))
+                return timezone.make_aware(dt, timezone.utc)
+            except (ValueError, AttributeError):
+                continue
+        return super().to_internal_value(value)
+
+
 class ElectionSerializer(serializers.ModelSerializer):
     candidates = CandidateSerializer(many=True, read_only=True)
+    start_time = FlexibleDateTimeField()
+    end_time = FlexibleDateTimeField()
 
     class Meta:
         model = Election

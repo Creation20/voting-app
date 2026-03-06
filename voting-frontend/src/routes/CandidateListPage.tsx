@@ -18,7 +18,6 @@ export default function CandidateListPage() {
     getAllElections()
       .then(data => {
         setElections(data)
-        // Auto-select the first active election, or just the first one
         const active = data.find(e => e.is_active) ?? data[0] ?? null
         setSelected(active)
       })
@@ -89,9 +88,9 @@ export default function CandidateListPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-10 relative">
       <div className="fixed inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 0%, rgba(212,168,67,0.04) 0%, transparent 60%)' }} />
+        style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 0%, color-mix(in srgb, var(--accent) 5%, transparent) 0%, transparent 60%)' }} />
 
-      {/* Election selector — shown when there are multiple */}
+      {/* Election selector */}
       {elections.length > 1 && (
         <div className="fade-up mb-8">
           <label className="block text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: 'var(--muted)' }}>
@@ -102,11 +101,13 @@ export default function CandidateListPage() {
               <button key={e.id} onClick={() => setSelected(e)}
                 className="px-4 py-2 text-sm font-medium rounded-sm transition-all duration-150"
                 style={{
-                  background: selected?.id === e.id ? 'rgba(212,168,67,0.15)' : 'rgba(30,45,74,0.4)',
-                  border: selected?.id === e.id ? '1px solid rgba(212,168,67,0.5)' : '1px solid rgba(212,168,67,0.1)',
-                  color: selected?.id === e.id ? 'var(--gold)' : 'var(--muted)',
+                  background: selected?.id === e.id ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'color-mix(in srgb, var(--bg-light) 60%, transparent)',
+                  border: selected?.id === e.id ? '1px solid color-mix(in srgb, var(--accent) 50%, transparent)' : '1px solid color-mix(in srgb, var(--accent) 12%, transparent)',
+                  color: selected?.id === e.id ? 'var(--accent)' : 'var(--muted)',
                 }}>
-                {e.is_active && <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 mb-0.5" style={{ background: '#34d399' }} />}
+                {e.is_active && (
+                  <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 mb-0.5" style={{ background: 'var(--success)' }} />
+                )}
                 {e.title}
               </button>
             ))}
@@ -119,7 +120,7 @@ export default function CandidateListPage() {
         <div className="fade-up mb-8">
           <div className="flex items-center gap-2 mb-3">
             {isVotable
-              ? <><div className="pulse-dot" /><span className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--gold)' }}>Live Election</span></>
+              ? <><div className="pulse-dot" /><span className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--accent)' }}>Live Election</span></>
               : <span className="badge-muted">{Date.now() < new Date(selected.start_time).getTime() ? 'UPCOMING' : 'CLOSED'}</span>
             }
           </div>
@@ -130,45 +131,45 @@ export default function CandidateListPage() {
             <p className="text-base mb-4" style={{ color: 'var(--muted)' }}>{selected.description}</p>
           )}
           <div className="flex flex-wrap gap-4 text-xs" style={{ color: 'var(--muted)' }}>
-            <span>Opens {new Date(selected.start_time).toLocaleString()}</span>
-            <span style={{ color: 'rgba(212,168,67,0.5)' }}>·</span>
-            <span>Closes {new Date(selected.end_time).toLocaleString()}</span>
+            <span>Opens {new Date(selected.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+            <span style={{ color: 'color-mix(in srgb, var(--accent) 40%, transparent)' }}>·</span>
+            <span>Closes {new Date(selected.end_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
             {isVotable && hoursLeft > 0 && (
-              <><span style={{ color: 'rgba(212,168,67,0.5)' }}>·</span>
-              <span style={{ color: 'var(--gold)' }}>{hoursLeft}h remaining</span></>
+              <><span style={{ color: 'color-mix(in srgb, var(--accent) 40%, transparent)' }}>·</span>
+              <span style={{ color: 'var(--accent)' }}>{hoursLeft}h remaining</span></>
             )}
           </div>
         </div>
       )}
 
-      <hr style={{ borderColor: 'rgba(212,168,67,0.12)', marginBottom: '2rem' }} />
+      <hr style={{ borderColor: 'var(--card-border)', marginBottom: '2rem' }} />
 
-      {/* Status banners */}
+      {/* Banners */}
       {successMsg && (
         <div className="fade-up flex items-start gap-3 px-5 py-4 rounded-sm mb-6"
-          style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.3)' }}>
-          <span style={{ color: '#34d399', fontSize: 18 }}>✓</span>
+          style={{ background: 'color-mix(in srgb, var(--success) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--success) 30%, transparent)' }}>
+          <span style={{ color: 'var(--success)', fontSize: 18 }}>✓</span>
           <div>
-            <p className="font-semibold text-sm mb-0.5" style={{ color: '#34d399' }}>Vote Recorded</p>
+            <p className="font-semibold text-sm mb-0.5" style={{ color: 'var(--success)' }}>Vote Recorded</p>
             <p className="text-sm" style={{ color: 'var(--muted)' }}>{successMsg}</p>
           </div>
         </div>
       )}
       {error && (
         <div className="flex items-center gap-3 px-5 py-4 rounded-sm mb-6 text-sm"
-          style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171' }}>
+          style={{ background: 'color-mix(in srgb, var(--danger) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)', color: 'var(--danger)' }}>
           <span>⚠</span> {error}
         </div>
       )}
       {!isVotable && selected && !error && (
         <div className="flex items-center gap-3 px-5 py-4 rounded-sm mb-6 text-sm"
-          style={{ background: 'rgba(138,155,181,0.06)', border: '1px solid rgba(138,155,181,0.15)', color: 'var(--muted)' }}>
+          style={{ background: 'color-mix(in srgb, var(--muted) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--muted) 15%, transparent)', color: 'var(--muted)' }}>
           <span>🔒</span> This election is not currently open for voting.
         </div>
       )}
       {votedCandidateId && !successMsg && (
         <div className="flex items-center gap-3 px-5 py-4 rounded-sm mb-6 text-sm"
-          style={{ background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', color: 'var(--gold)' }}>
+          style={{ background: 'color-mix(in srgb, var(--accent) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)', color: 'var(--accent)' }}>
           <span>ℹ</span> You have already cast your vote in this election.
         </div>
       )}
@@ -184,7 +185,7 @@ export default function CandidateListPage() {
               votedCandidateId={votedCandidateId}
               onVote={handleVote} isSubmitting={submitting} index={i} />
           ))}
-          {candidates.length === 0 && !candidatesLoading && (
+          {candidates.length === 0 && (
             <div className="text-center py-12" style={{ color: 'var(--muted)' }}>
               No candidates have been added to this election yet.
             </div>

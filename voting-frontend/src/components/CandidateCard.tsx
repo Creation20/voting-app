@@ -38,8 +38,13 @@ export default function CandidateCard({ candidate, hasVoted, votedCandidateId, o
               {isMyVote && <span className="badge-green">✓ YOUR VOTE</span>}
             </div>
             {candidate.party && (
-              <p className="text-xs font-semibold mb-2 tracking-widest uppercase" style={{ color: 'var(--gold)' }}>
+              <p className="text-xs font-semibold mb-1 tracking-widest uppercase" style={{ color: 'var(--gold)' }}>
                 {candidate.party}
+              </p>
+            )}
+            {candidate.motto && (
+              <p className="text-sm italic mb-2" style={{ color: 'var(--gold)', opacity: 0.8 }}>
+                "{candidate.motto}"
               </p>
             )}
             {candidate.description && (

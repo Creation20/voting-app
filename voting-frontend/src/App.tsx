@@ -7,6 +7,7 @@ import LoginPage from './routes/LoginPage'
 import CandidateListPage from './routes/CandidateListPage'
 import AdminResultsPage from './routes/AdminResultsPage'
 import AdminManagePage from './routes/AdminManagePage'
+import SuperuserPage from './routes/SuperUserPage'
 
 export default function App() {
   return (
@@ -17,30 +18,10 @@ export default function App() {
           <main>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
-              <Route
-                path="/vote"
-                element={
-                  <ProtectedRoute>
-                    <CandidateListPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/results"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <AdminResultsPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/manage"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <AdminManagePage />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/vote" element={<ProtectedRoute><CandidateListPage /></ProtectedRoute>} />
+              <Route path="/admin/results" element={<ProtectedRoute requireAdmin><AdminResultsPage /></ProtectedRoute>} />
+              <Route path="/admin/manage" element={<ProtectedRoute requireAdmin><AdminManagePage /></ProtectedRoute>} />
+              <Route path="/superuser" element={<ProtectedRoute requireSuperuser><SuperuserPage /></ProtectedRoute>} />
               <Route path="/" element={<Navigate to="/vote" replace />} />
               <Route path="*" element={<Navigate to="/vote" replace />} />
             </Routes>

@@ -1,15 +1,14 @@
 from django.db import IntegrityError
 from django.db.models import Count
 from django.utils import timezone
-from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import Election, Candidate, Vote
-from .permissions import IsAdminUser
+from .permissions import IsAdminUser, IsSuperUser
 from .serializers import (
     CustomTokenObtainPairSerializer,
     ElectionSerializer,
@@ -30,6 +29,7 @@ class MeView(APIView):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
 
+
 class ElectionListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -37,6 +37,7 @@ class ElectionListView(APIView):
         elections = Election.objects.all().order_by('-is_active', '-start_time')
         serializer = ElectionSerializer(elections, many=True)
         return Response(serializer.data)
+
 
 class ActiveElectionView(APIView):
     permission_classes = [IsAuthenticated]
@@ -65,8 +66,6 @@ class ElectionCandidatesView(APIView):
 
         candidates = Candidate.objects.filter(election=election)
         serializer = CandidateSerializer(candidates, many=True)
-
-        # Check if user has already voted
         user_vote = Vote.objects.filter(user=request.user, election=election).first()
         voted_candidate_id = user_vote.candidate_id if user_vote else None
 
@@ -104,11 +103,7 @@ class VoteView(APIView):
             return Response({'detail': 'Candidate not found in this election.'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            vote = Vote.objects.create(
-                user=request.user,
-                candidate=candidate,
-                election=election
-            )
+            vote = Vote.objects.create(user=request.user, candidate=candidate, election=election)
         except IntegrityError:
             return Response({'detail': 'You have already voted in this election.'}, status=status.HTTP_409_CONFLICT)
 
@@ -119,7 +114,7 @@ class VoteView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
-# Admin views
+# ── Admin views ────────────────────────────────────────────────────────────────
 
 class AdminElectionListCreateView(APIView):
     permission_classes = [IsAdminUser]
@@ -150,8 +145,7 @@ class AdminElectionDetailView(APIView):
         election = self.get_object(election_id)
         if not election:
             return Response({'detail': 'Election not found.'}, status=status.HTTP_404_NOT_FOUND)
-        serializer = ElectionSerializer(election)
-        return Response(serializer.data)
+        return Response(ElectionSerializer(election).data)
 
     def patch(self, request, election_id):
         election = self.get_object(election_id)
@@ -197,6 +191,7 @@ class AdminElectionResultsView(APIView):
                 'id': candidate.id,
                 'name': candidate.name,
                 'party': candidate.party,
+                'motto': candidate.motto,
                 'description': candidate.description,
                 'vote_count': candidate.vote_count,
                 'percentage': pct,
@@ -207,5 +202,50 @@ class AdminElectionResultsView(APIView):
             'total_votes': total_votes,
             'results': results,
         })
-    
-    
+
+
+# ── Superuser-only views ───────────────────────────────────────────────────────
+
+class SuperuserCandidateCreateView(APIView):
+    permission_classes = [IsSuperUser]
+
+    def get(self, request):
+        """List all candidates across all elections."""
+        candidates = Candidate.objects.select_related('election').all().order_by('-created_at')
+        serializer = CandidateSerializer(candidates, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        """Create a candidate with name, party, and motto."""
+        serializer = CandidateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SuperuserCandidateDetailView(APIView):
+    permission_classes = [IsSuperUser]
+
+    def get_object(self, pk):
+        try:
+            return Candidate.objects.get(pk=pk)
+        except Candidate.DoesNotExist:
+            return None
+
+    def patch(self, request, candidate_id):
+        candidate = self.get_object(candidate_id)
+        if not candidate:
+            return Response({'detail': 'Candidate not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CandidateSerializer(candidate, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, candidate_id):
+        candidate = self.get_object(candidate_id)
+        if not candidate:
+            return Response({'detail': 'Candidate not found.'}, status=status.HTTP_404_NOT_FOUND)
+        candidate.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
