@@ -33,14 +33,12 @@ class CandidateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Candidate
-        fields = ['id', 'name', 'description', 'party', 'election', 'vote_count', 'created_at']
+        fields = ['id', 'name', 'description', 'party', 'motto', 'election', 'vote_count', 'created_at']
         read_only_fields = ['created_at']
 
 
 class FlexibleDateTimeField(serializers.DateTimeField):
-    """Accepts both naive datetime-local strings and full ISO strings."""
     def to_internal_value(self, value):
-        # Strip trailing Z or +00:00 variants, try multiple formats
         for fmt in [
             '%Y-%m-%dT%H:%M',
             '%Y-%m-%dT%H:%M:%S',
@@ -79,10 +77,8 @@ class VoteSerializer(serializers.ModelSerializer):
 
         if not election.is_active:
             raise serializers.ValidationError("This election is not currently active.")
-
         if candidate.election != election:
             raise serializers.ValidationError("This candidate does not belong to the specified election.")
-
         if Vote.objects.filter(user=user, election=election).exists():
             raise serializers.ValidationError("You have already voted in this election.")
 

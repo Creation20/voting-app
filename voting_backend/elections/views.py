@@ -26,8 +26,7 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
+        return Response(UserSerializer(request.user).data)
 
 
 class ElectionListView(APIView):
@@ -35,8 +34,7 @@ class ElectionListView(APIView):
 
     def get(self, request):
         elections = Election.objects.all().order_by('-is_active', '-start_time')
-        serializer = ElectionSerializer(elections, many=True)
-        return Response(serializer.data)
+        return Response(ElectionSerializer(elections, many=True).data)
 
 
 class ActiveElectionView(APIView):
@@ -45,14 +43,11 @@ class ActiveElectionView(APIView):
     def get(self, request):
         now = timezone.now()
         election = Election.objects.filter(
-            is_active=True,
-            start_time__lte=now,
-            end_time__gte=now
+            is_active=True, start_time__lte=now, end_time__gte=now
         ).first()
         if not election:
             return Response({'detail': 'No active election found.'}, status=status.HTTP_404_NOT_FOUND)
-        serializer = ElectionSerializer(election)
-        return Response(serializer.data)
+        return Response(ElectionSerializer(election).data)
 
 
 class ElectionCandidatesView(APIView):
@@ -65,13 +60,11 @@ class ElectionCandidatesView(APIView):
             return Response({'detail': 'Election not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         candidates = Candidate.objects.filter(election=election)
-        serializer = CandidateSerializer(candidates, many=True)
         user_vote = Vote.objects.filter(user=request.user, election=election).first()
-        voted_candidate_id = user_vote.candidate_id if user_vote else None
 
         return Response({
-            'candidates': serializer.data,
-            'voted_candidate_id': voted_candidate_id,
+            'candidates': CandidateSerializer(candidates, many=True).data,
+            'voted_candidate_id': user_vote.candidate_id if user_vote else None,
         })
 
 
@@ -121,8 +114,7 @@ class AdminElectionListCreateView(APIView):
 
     def get(self, request):
         elections = Election.objects.all().order_by('-created_at')
-        serializer = ElectionSerializer(elections, many=True)
-        return Response(serializer.data)
+        return Response(ElectionSerializer(elections, many=True).data)
 
     def post(self, request):
         serializer = ElectionSerializer(data=request.data)
@@ -144,13 +136,13 @@ class AdminElectionDetailView(APIView):
     def get(self, request, election_id):
         election = self.get_object(election_id)
         if not election:
-            return Response({'detail': 'Election not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(ElectionSerializer(election).data)
 
     def patch(self, request, election_id):
         election = self.get_object(election_id)
         if not election:
-            return Response({'detail': 'Election not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         serializer = ElectionSerializer(election, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -170,13 +162,14 @@ class AdminCandidateListCreateView(APIView):
 
 
 class AdminElectionResultsView(APIView):
+    """Admin results — NO percentages, just counts."""
     permission_classes = [IsAdminUser]
 
     def get(self, request, election_id):
         try:
             election = Election.objects.get(pk=election_id)
         except Election.DoesNotExist:
-            return Response({'detail': 'Election not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         candidates = Candidate.objects.filter(election=election).annotate(
             vote_count=Count('votes')
@@ -184,18 +177,17 @@ class AdminElectionResultsView(APIView):
 
         total_votes = Vote.objects.filter(election=election).count()
 
-        results = []
-        for candidate in candidates:
-            pct = round((candidate.vote_count / total_votes * 100), 1) if total_votes > 0 else 0
-            results.append({
-                'id': candidate.id,
-                'name': candidate.name,
-                'party': candidate.party,
-                'motto': candidate.motto,
-                'description': candidate.description,
-                'vote_count': candidate.vote_count,
-                'percentage': pct,
-            })
+        results = [
+            {
+                'id': c.id,
+                'name': c.name,
+                'party': c.party,
+                'description': c.description,
+                'vote_count': c.vote_count,
+                # No percentage here — superuser only
+            }
+            for c in candidates
+        ]
 
         return Response({
             'election': ElectionSerializer(election).data,
@@ -206,17 +198,95 @@ class AdminElectionResultsView(APIView):
 
 # ── Superuser-only views ───────────────────────────────────────────────────────
 
+def _build_results_with_percentage(election):
+    """Helper: build results with vote counts AND percentages."""
+    candidates = Candidate.objects.filter(election=election).annotate(
+        vote_count=Count('votes')
+    ).order_by('-vote_count')
+    total_votes = Vote.objects.filter(election=election).count()
+    results = []
+    for c in candidates:
+        pct = round((c.vote_count / total_votes * 100), 1) if total_votes > 0 else 0
+        results.append({
+            'id': c.id,
+            'name': c.name,
+            'party': c.party,
+            'motto': c.motto,
+            'description': c.description,
+            'vote_count': c.vote_count,
+            'percentage': pct,
+        })
+    return total_votes, results
+
+
+class SuperuserElectionListCreateView(APIView):
+    permission_classes = [IsSuperUser]
+
+    def get(self, request):
+        elections = Election.objects.all().order_by('-created_at')
+        return Response(ElectionSerializer(elections, many=True).data)
+
+    def post(self, request):
+        serializer = ElectionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SuperuserElectionDetailView(APIView):
+    permission_classes = [IsSuperUser]
+
+    def get_object(self, election_id):
+        try:
+            return Election.objects.get(pk=election_id)
+        except Election.DoesNotExist:
+            return None
+
+    def patch(self, request, election_id):
+        election = self.get_object(election_id)
+        if not election:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = ElectionSerializer(election, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, election_id):
+        election = self.get_object(election_id)
+        if not election:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        election.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SuperuserElectionResultsView(APIView):
+    """Superuser results — includes percentages."""
+    permission_classes = [IsSuperUser]
+
+    def get(self, request, election_id):
+        try:
+            election = Election.objects.get(pk=election_id)
+        except Election.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        total_votes, results = _build_results_with_percentage(election)
+        return Response({
+            'election': ElectionSerializer(election).data,
+            'total_votes': total_votes,
+            'results': results,
+        })
+
+
 class SuperuserCandidateCreateView(APIView):
     permission_classes = [IsSuperUser]
 
     def get(self, request):
-        """List all candidates across all elections."""
-        candidates = Candidate.objects.select_related('election').all().order_by('-created_at')
-        serializer = CandidateSerializer(candidates, many=True)
-        return Response(serializer.data)
+        candidates = Candidate.objects.select_related('election').all().order_by('election', 'name')
+        return Response(CandidateSerializer(candidates, many=True).data)
 
     def post(self, request):
-        """Create a candidate with name, party, and motto."""
         serializer = CandidateSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -236,7 +306,7 @@ class SuperuserCandidateDetailView(APIView):
     def patch(self, request, candidate_id):
         candidate = self.get_object(candidate_id)
         if not candidate:
-            return Response({'detail': 'Candidate not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         serializer = CandidateSerializer(candidate, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -246,6 +316,6 @@ class SuperuserCandidateDetailView(APIView):
     def delete(self, request, candidate_id):
         candidate = self.get_object(candidate_id)
         if not candidate:
-            return Response({'detail': 'Candidate not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         candidate.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

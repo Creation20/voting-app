@@ -32,7 +32,7 @@ export interface VoteResult {
   motto: string
   description: string
   vote_count: number
-  percentage: number
+  percentage?: number  // only present in superuser results
 }
 
 export interface ResultsResponse {
@@ -81,12 +81,36 @@ export async function updateElection(id: number, payload: Partial<Election>): Pr
   return data
 }
 
-export async function createCandidate(payload: { name: string; party: string; description: string; election: number }) {
-  const { data } = await client.post('/admin/candidates/', payload)
+export async function createCandidate(payload: { name: string; party: string; description: string; election: number }): Promise<Candidate> {
+  const { data } = await client.post<Candidate>('/admin/candidates/', payload)
   return data
 }
 
 // Superuser endpoints
+export async function superuserGetElections(): Promise<Election[]> {
+  const { data } = await client.get<Election[]>('/superuser/elections/')
+  return data
+}
+
+export async function superuserCreateElection(payload: Partial<Election>): Promise<Election> {
+  const { data } = await client.post<Election>('/superuser/elections/', payload)
+  return data
+}
+
+export async function superuserUpdateElection(id: number, payload: Partial<Election>): Promise<Election> {
+  const { data } = await client.patch<Election>(`/superuser/elections/${id}/`, payload)
+  return data
+}
+
+export async function superuserDeleteElection(id: number): Promise<void> {
+  await client.delete(`/superuser/elections/${id}/`)
+}
+
+export async function superuserGetResults(electionId: number): Promise<ResultsResponse> {
+  const { data } = await client.get<ResultsResponse>(`/superuser/elections/${electionId}/results/`)
+  return data
+}
+
 export async function superuserGetCandidates(): Promise<Candidate[]> {
   const { data } = await client.get<Candidate[]>('/superuser/candidates/')
   return data

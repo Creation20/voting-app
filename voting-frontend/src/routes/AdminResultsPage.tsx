@@ -2,16 +2,17 @@ import React, { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { getAdminElections, getResults, Election, ResultsResponse } from '../api/elections'
 
-const COLORS = ['#d4a843', '#6366f1', '#34d399', '#f59e0b', '#ec4899', '#60a5fa']
+const COLORS = ['var(--accent)', '#6366f1', '#34d399', '#f59e0b', '#ec4899', '#60a5fa']
+const COLORS_STATIC = ['#a855f7', '#6366f1', '#34d399', '#f59e0b', '#ec4899', '#60a5fa']
 
 const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; vote_count: number; percentage: number } }> }) => {
   if (active && payload?.length) {
     const d = payload[0].payload
     return (
       <div className="px-4 py-3 rounded-sm text-sm"
-        style={{ background: 'var(--navy-mid)', border: '1px solid rgba(212,168,67,0.3)' }}>
+        style={{ background: 'var(--bg-mid)', border: '1px solid var(--card-border)' }}>
         <p className="font-bold mb-1" style={{ color: 'var(--cream)' }}>{d.name}</p>
-        <p style={{ color: 'var(--gold)' }}>{d.vote_count} votes · {d.percentage}%</p>
+        <p style={{ color: 'var(--accent)' }}>{d.vote_count} votes · {d.percentage}%</p>
       </div>
     )
   }
@@ -56,13 +57,13 @@ export default function AdminResultsPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       <div className="fade-up mb-8">
-        <p className="text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: 'var(--gold)' }}>Admin Panel</p>
+        <p className="text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: 'var(--accent)' }}>Admin Panel</p>
         <h1 className="display-font text-4xl font-black" style={{ color: 'var(--cream)' }}>Election Results</h1>
       </div>
 
       {error && (
         <div className="px-4 py-3 rounded-sm text-sm mb-6"
-          style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171' }}>
+          style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)', color: 'var(--danger)' }}>
           {error}
         </div>
       )}
@@ -89,9 +90,9 @@ export default function AdminResultsPage() {
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 fade-up-2">
                 {[
-                  { label: 'Total Votes', value: results.total_votes, color: 'var(--gold)' },
+                  { label: 'Total Votes', value: results.total_votes, color: 'var(--accent)' },
                   { label: 'Candidates', value: results.results.length, color: '#6366f1' },
-                  { label: 'Leading', value: leader?.name ?? '—', color: '#34d399', small: true },
+                  { label: 'Leading', value: leader?.name ?? '—', color: 'var(--success)', small: true },
                 ].map(({ label, value, color, small }) => (
                   <div key={label} className="glass-card p-5 text-center">
                     <p className={`font-black display-font mb-1 ${small ? 'text-xl' : 'text-4xl'}`} style={{ color }}>{value}</p>
@@ -105,12 +106,12 @@ export default function AdminResultsPage() {
                   <p className="text-xs font-semibold tracking-widest uppercase mb-5" style={{ color: 'var(--muted)' }}>Vote Distribution</p>
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={results.results} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(212,168,67,0.07)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--card-border)" />
                       <XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
                       <YAxis allowDecimals={false} tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(212,168,67,0.04)' }} />
+                      <Tooltip content={<CustomTooltip />} cursor={{ fill: 'color-mix(in srgb, var(--accent) 5%, transparent)' }} />
                       <Bar dataKey="vote_count" radius={[4, 4, 0, 0]}>
-                        {results.results.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                        {results.results.map((_, i) => <Cell key={i} fill={COLORS_STATIC[i % COLORS_STATIC.length]} />)}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -125,7 +126,7 @@ export default function AdminResultsPage() {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-3">
                           <span className="w-6 text-center text-xs font-bold display-font"
-                            style={{ color: i === 0 ? 'var(--gold)' : 'var(--muted)' }}>
+                            style={{ color: i === 0 ? 'var(--accent)' : 'var(--muted)' }}>
                             {i === 0 ? '★' : `#${i + 1}`}
                           </span>
                           <div>
@@ -133,13 +134,14 @@ export default function AdminResultsPage() {
                             {r.party && <span className="text-xs ml-2" style={{ color: 'var(--muted)' }}>{r.party}</span>}
                           </div>
                         </div>
-                        <span className="text-sm font-semibold" style={{ color: COLORS[i % COLORS.length] }}>
+                        <span className="text-sm font-semibold" style={{ color: COLORS_STATIC[i % COLORS_STATIC.length] }}>
                           {r.vote_count} <span className="text-xs font-normal" style={{ color: 'var(--muted)' }}>({r.percentage}%)</span>
                         </span>
                       </div>
-                      <div className="h-1.5 rounded-full overflow-hidden ml-9" style={{ background: 'rgba(138,155,181,0.12)' }}>
+                      <div className="h-1.5 rounded-full overflow-hidden ml-9"
+                        style={{ background: 'color-mix(in srgb, var(--muted) 15%, transparent)' }}>
                         <div className="h-full rounded-full transition-all duration-700"
-                          style={{ width: `${r.percentage}%`, background: COLORS[i % COLORS.length] }} />
+                          style={{ width: `${r.percentage}%`, background: COLORS_STATIC[i % COLORS_STATIC.length] }} />
                       </div>
                     </div>
                   ))}
