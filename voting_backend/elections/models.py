@@ -114,6 +114,22 @@ class Candidate(models.Model):
         return f"{self.name} ({self.election.title})"
 
 
+class CandidateTeamMember(models.Model):
+    """A running mate or team member under a candidate (e.g. Vice President)."""
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='team_members')
+    name = models.CharField(max_length=255)
+    title = models.CharField(max_length=255, blank=True, help_text='e.g. Vice President, Secretary General')
+    photo_url = models.URLField(blank=True)
+    order = models.PositiveSmallIntegerField(default=0, help_text='Display order; lower = first')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.title}) — under {self.candidate.name}"
+
+
 class Vote(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='votes')
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='votes')

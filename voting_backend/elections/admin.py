@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser, Organization, Election, Candidate, Vote, AuditLog, VoterUpload
+from .models import CustomUser, Organization, Election, Candidate, CandidateTeamMember, Vote, AuditLog, VoterUpload
 
 
 @admin.register(Organization)
@@ -57,3 +57,11 @@ class AuditLogAdmin(admin.ModelAdmin):
 class VoterUploadAdmin(admin.ModelAdmin):
     list_display = ['filename', 'organization', 'uploaded_by', 'total_rows', 'success_count', 'error_count', 'created_at']
     readonly_fields = ['filename', 'organization', 'uploaded_by', 'total_rows', 'success_count', 'error_count', 'errors', 'created_at']
+
+
+@admin.register(CandidateTeamMember)
+class CandidateTeamMemberAdmin(admin.ModelAdmin):
+    list_display = ['name', 'title', 'candidate', 'order', 'created_at']
+    list_filter = ['candidate__election']
+    search_fields = ['name', 'title', 'candidate__name']
+    raw_id_fields = ['candidate']

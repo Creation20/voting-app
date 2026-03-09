@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import {
-  getOrgSettings, updateOrgSettings, regenerateJoinCode,
-  getOrgMembers, updateMemberRole, removeMember,
-  Organization, OrgMember,
-} from '../api/elections'
+import { getOrgSettings, updateOrgSettings, regenerateJoinCode, getOrgMembers, updateMemberRole, removeMember } from '../api/org'
+import type { Organization } from '../api/org'
+import type { OrgMember } from '../api/admin'
 import { useAuth } from '../context/AuthContext'
-import axios from 'axios'
 
 type Tab = 'overview' | 'members'
-
 const ORG_TYPES = ['UNIVERSITY', 'HIGH_SCHOOL', 'GOVERNMENT', 'CORPORATE', 'COMMUNITY', 'OTHER']
 
 export default function OrgOwnerPage() {
@@ -21,8 +17,6 @@ export default function OrgOwnerPage() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [showCode, setShowCode] = useState(false)
-
-  // Settings form
   const [oName, setOName] = useState('')
   const [oDesc, setODesc] = useState('')
   const [oType, setOType] = useState('')
@@ -36,13 +30,11 @@ export default function OrgOwnerPage() {
   const load = async () => {
     try {
       const [o, m] = await Promise.all([getOrgSettings(), getOrgMembers()])
-      setOrg(o)
-      setMembers(m)
+      setOrg(o); setMembers(m)
       setOName(o.name); setODesc(o.description); setOType(o.org_type); setOLogo(o.logo_url)
     } catch { flash('Failed to load organisation data.', true) }
     finally { setLoading(false) }
   }
-
   useEffect(() => { load() }, [])
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -80,17 +72,13 @@ export default function OrgOwnerPage() {
     } catch { flash('Failed to remove member.', true) }
   }
 
-  if (loading) {
-    return <div className="flex flex-col items-center justify-center min-h-[70vh] gap-4">
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center min-h-[70vh] gap-4">
       <div className="spinner" /><p className="text-sm" style={{ color: 'var(--muted)' }}>Loading…</p>
     </div>
-  }
+  )
 
-  const roleColor = (role: string) => {
-    if (role === 'ADMIN') return 'var(--accent)'
-    if (role === 'ORG_OWNER') return '#f59e0b'
-    return 'var(--muted)'
-  }
+  const roleColor = (role: string) => role === 'ADMIN' ? 'var(--accent)' : role === 'ORG_OWNER' ? '#f59e0b' : 'var(--muted)'
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
@@ -103,12 +91,9 @@ export default function OrgOwnerPage() {
         <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{org?.org_type} · {members.length} members · {org?.election_count} elections</p>
       </div>
 
-      {msg && <div className="flex items-center gap-2 px-4 py-3 rounded-sm text-sm"
-        style={{ background: 'color-mix(in srgb, var(--success) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--success) 35%, transparent)', color: 'var(--success)' }}>✓ {msg}</div>}
-      {error && <div className="flex items-center gap-2 px-4 py-3 rounded-sm text-sm"
-        style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)', color: 'var(--danger)' }}>⚠ {error}</div>}
+      {msg && <div className="flex items-center gap-2 px-4 py-3 rounded-sm text-sm" style={{ background: 'color-mix(in srgb, var(--success) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--success) 35%, transparent)', color: 'var(--success)' }}>✓ {msg}</div>}
+      {error && <div className="flex items-center gap-2 px-4 py-3 rounded-sm text-sm" style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)', color: 'var(--danger)' }}>⚠ {error}</div>}
 
-      {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-sm" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
         {(['overview', 'members'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -119,30 +104,21 @@ export default function OrgOwnerPage() {
         ))}
       </div>
 
-      {/* ── OVERVIEW TAB ── */}
       {tab === 'overview' && (
         <div className="space-y-6">
-          {/* Join code card */}
           <div className="glass-card p-6 fade-up-1">
             <h2 className="display-font text-lg font-bold mb-4" style={{ color: 'var(--cream)' }}>Join Code</h2>
-            <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>
-              Share this code with people you want to join your organisation. They'll use it on the registration page.
-            </p>
             <div className="flex items-center gap-4 flex-wrap">
               <div className="px-6 py-3 rounded-sm text-2xl font-bold tracking-widest display-font"
                 style={{ background: 'color-mix(in srgb, var(--accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)', color: 'var(--accent)', letterSpacing: '0.3em' }}>
                 {showCode ? org?.join_code : '••••••••'}
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setShowCode(!showCode)} className="btn-ghost text-sm">
-                  {showCode ? '🙈 Hide' : '👁 Show'}
-                </button>
+                <button onClick={() => setShowCode(!showCode)} className="btn-ghost text-sm">{showCode ? '🙈 Hide' : '👁 Show'}</button>
                 {showCode && org?.join_code && (
-                  <button onClick={() => { navigator.clipboard.writeText(org.join_code); flash('Copied!') }}
-                    className="btn-ghost text-sm">📋 Copy</button>
+                  <button onClick={() => { navigator.clipboard.writeText(org.join_code); flash('Copied!') }} className="btn-ghost text-sm">📋 Copy</button>
                 )}
-                <button onClick={handleRegenerateCode}
-                  className="text-xs px-3 py-2 rounded-sm transition-all"
+                <button onClick={handleRegenerateCode} className="text-xs px-3 py-2 rounded-sm transition-all"
                   style={{ color: 'var(--danger)', border: '1px solid color-mix(in srgb, var(--danger) 25%, transparent)', background: 'transparent' }}>
                   🔄 Regenerate
                 </button>
@@ -150,7 +126,6 @@ export default function OrgOwnerPage() {
             </div>
           </div>
 
-          {/* Settings form */}
           <div className="glass-card p-6 fade-up-2">
             <h2 className="display-font text-lg font-bold mb-5" style={{ color: 'var(--cream)' }}>Organisation Settings</h2>
             <form onSubmit={handleSaveSettings} className="space-y-4">
@@ -172,15 +147,12 @@ export default function OrgOwnerPage() {
                 <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Logo URL</label>
                 <input type="url" className="input-field" placeholder="https://…" value={oLogo} onChange={e => setOLogo(e.target.value)} />
               </div>
-              <button type="submit" disabled={saving} className="btn-accent">
-                {saving ? 'Saving…' : 'Save Settings →'}
-              </button>
+              <button type="submit" disabled={saving} className="btn-accent">{saving ? 'Saving…' : 'Save Settings →'}</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* ── MEMBERS TAB ── */}
       {tab === 'members' && (
         <div className="glass-card p-6 fade-up-1">
           <h2 className="display-font text-lg font-bold mb-5" style={{ color: 'var(--cream)' }}>

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAdminDashboard, getAdminElections, DashboardStats, Election } from '../api/elections'
+import { getAdminDashboard, getAdminElections } from '../api/admin'
+import type { DashboardStats } from '../api/admin'
+import type { Election } from '../api/elections'
 
 const StatCard = ({ label, value, color, sub }: { label: string; value: string | number; color: string; sub?: string }) => (
   <div className="glass-card p-6 flex flex-col gap-2">
@@ -44,24 +46,23 @@ export default function AdminDashboardPage() {
       </div>
 
       {error && (
-        <div className="px-4 py-3 rounded-sm text-sm" style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)', color: 'var(--danger)' }}>
+        <div className="px-4 py-3 rounded-sm text-sm"
+          style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)', color: 'var(--danger)' }}>
           {error}
         </div>
       )}
 
-      {/* Stat cards */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 fade-up-1">
-          <StatCard label="Total Voters" value={stats.total_voters} color="var(--accent)" />
-          <StatCard label="Total Votes" value={stats.total_votes} color="#6366f1" />
-          <StatCard label="Active Elections" value={stats.active_elections} color="var(--success)" />
-          <StatCard label="All Elections" value={stats.total_elections} color="var(--cream)" />
-          <StatCard label="Turnout" value={`${stats.voter_turnout_pct}%`} color="#f59e0b" sub="of registered voters" />
-          <StatCard label="Votes Today" value={stats.recent_votes} color="#ec4899" sub="last 24 hours" />
+          <StatCard label="Total Voters"     value={stats.total_voters}        color="var(--accent)" />
+          <StatCard label="Total Votes"      value={stats.total_votes}         color="#6366f1" />
+          <StatCard label="Active Elections" value={stats.active_elections}    color="var(--success)" />
+          <StatCard label="All Elections"    value={stats.total_elections}     color="var(--cream)" />
+          <StatCard label="Turnout"          value={`${stats.voter_turnout_pct}%`} color="#f59e0b" sub="of registered voters" />
+          <StatCard label="Votes Today"      value={stats.recent_votes}        color="#ec4899" sub="last 24 hours" />
         </div>
       )}
 
-      {/* Turnout progress bar */}
       {stats && stats.total_voters > 0 && (
         <div className="glass-card p-6 fade-up-2">
           <div className="flex justify-between items-center mb-3">
@@ -80,13 +81,12 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 fade-up-3">
         {[
           { label: 'Manage Elections', desc: 'Create, edit, start/stop elections', to: '/admin/manage', icon: '🗳' },
-          { label: 'Manage Voters', desc: 'Upload CSV, view voter list', to: '/admin/voters', icon: '👥' },
-          { label: 'View Results', desc: 'Charts and detailed breakdown', to: '/admin/results', icon: '📊' },
-          { label: 'Audit Log', desc: 'Security and activity trail', to: '/admin/audit', icon: '🔍' },
+          { label: 'Manage Voters',    desc: 'Upload CSV, view voter list',        to: '/admin/voters', icon: '👥' },
+          { label: 'View Results',     desc: 'Charts and detailed breakdown',      to: '/admin/results', icon: '📊' },
+          { label: 'Audit Log',        desc: 'Security and activity trail',        to: '/admin/audit',  icon: '🔍' },
         ].map(({ label, desc, to, icon }) => (
           <Link key={to} to={to}
             className="glass-card p-5 flex flex-col gap-2 transition-all duration-200 hover:scale-[1.02]"
@@ -98,7 +98,6 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      {/* Active elections */}
       {activeElections.length > 0 && (
         <div className="glass-card p-6 fade-up-4">
           <div className="flex items-center gap-2 mb-4">
@@ -135,7 +134,6 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* Draft elections reminder */}
       {draftElections.length > 0 && (
         <div className="px-5 py-4 rounded-sm flex items-center gap-3"
           style={{ background: 'color-mix(in srgb, #f59e0b 8%, transparent)', border: '1px solid color-mix(in srgb, #f59e0b 25%, transparent)' }}>

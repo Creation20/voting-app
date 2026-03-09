@@ -14,11 +14,12 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Organization, Election, Candidate, Vote, CustomUser, AuditLog, VoterUpload
+from .models import Organization, Election, Candidate, CandidateTeamMember, Vote, CustomUser, AuditLog, VoterUpload
 from .permissions import IsAdminUser, IsOrgOwner, IsSuperUser, BelongsToOrg
 from .serializers import (
     CustomTokenObtainPairSerializer, ElectionSerializer, CandidateSerializer,
-    VoteSubmitSerializer, UserSerializer, OrganizationSerializer, RegisterSerializer,
+    CandidateTeamMemberSerializer, VoteSubmitSerializer, UserSerializer,
+    OrganizationSerializer, RegisterSerializer,
     AuditLogSerializer, VoterUploadSerializer,
 )
 
@@ -697,3 +698,112 @@ class SuperuserDashboardView(APIView):
             'active_elections': active_elections,
             'total_elections': total_elections,
         })
+
+
+# ── Candidate Team Members ─────────────────────────────────────────────────────
+
+class AdminTeamMemberListCreateView(APIView):
+    """Admin/OrgOwner: list all team members for a candidate, or add one."""
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, candidate_id):
+        try:
+            candidate = Candidate.objects.get(pk=candidate_id, election__organization=request.user.organization)
+        except Candidate.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        members = candidate.team_members.all()
+        return Response(CandidateTeamMemberSerializer(members, many=True).data)
+
+    def post(self, request, candidate_id):
+        try:
+            candidate = Candidate.objects.get(pk=candidate_id, election__organization=request.user.organization)
+        except Candidate.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        data = {**request.data, 'candidate': candidate.id}
+        serializer = CandidateTeamMemberSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            audit(request, AuditLog.Action.CANDIDATE_UPDATED,
+                  f"Team member '{serializer.data['name']}' added to candidate '{candidate.name}'")
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminTeamMemberDetailView(APIView):
+    """Admin/OrgOwner: update or delete a specific team member."""
+    permission_classes = [IsAdminUser]
+
+    def _get_member(self, request, member_id):
+        try:
+            return CandidateTeamMember.objects.get(
+                pk=member_id,
+                candidate__election__organization=request.user.organization
+            )
+        except CandidateTeamMember.DoesNotExist:
+            return None
+
+    def patch(self, request, member_id):
+        member = self._get_member(request, member_id)
+        if not member:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CandidateTeamMemberSerializer(member, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, member_id):
+        member = self._get_member(request, member_id)
+        if not member:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        audit(request, AuditLog.Action.CANDIDATE_UPDATED,
+              f"Team member '{member.name}' removed from candidate '{member.candidate.name}'")
+        member.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SuperuserTeamMemberListCreateView(APIView):
+    """Superuser: manage team members across all orgs."""
+    permission_classes = [IsSuperUser]
+
+    def get(self, request, candidate_id):
+        try:
+            candidate = Candidate.objects.get(pk=candidate_id)
+        except Candidate.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(CandidateTeamMemberSerializer(candidate.team_members.all(), many=True).data)
+
+    def post(self, request, candidate_id):
+        try:
+            candidate = Candidate.objects.get(pk=candidate_id)
+        except Candidate.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        data = {**request.data, 'candidate': candidate.id}
+        serializer = CandidateTeamMemberSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SuperuserTeamMemberDetailView(APIView):
+    permission_classes = [IsSuperUser]
+
+    def patch(self, request, member_id):
+        try:
+            member = CandidateTeamMember.objects.get(pk=member_id)
+        except CandidateTeamMember.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CandidateTeamMemberSerializer(member, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, member_id):
+        try:
+            member = CandidateTeamMember.objects.get(pk=member_id)
+        except CandidateTeamMember.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        member.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

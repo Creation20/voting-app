@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { getAdminElections, getResults, Election, ResultsResponse } from '../api/elections'
+import { getAdminElections, getResults } from '../api/admin'
+import type { Election, ResultsResponse } from '../api/elections'
 
-const COLORS = ['var(--accent)', '#6366f1', '#34d399', '#f59e0b', '#ec4899', '#60a5fa']
 const COLORS_STATIC = ['#a855f7', '#6366f1', '#34d399', '#f59e0b', '#ec4899', '#60a5fa']
 
 const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; vote_count: number; percentage: number } }> }) => {

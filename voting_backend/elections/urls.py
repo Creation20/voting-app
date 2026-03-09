@@ -38,4 +38,10 @@ urlpatterns = [
     path('superuser/candidates/', views.SuperuserCandidateCreateView.as_view(), name='superuser-candidates'),
     path('superuser/candidates/<int:candidate_id>/', views.SuperuserCandidateDetailView.as_view(), name='superuser-candidate-detail'),
     path('superuser/audit-log/', views.SuperuserAuditLogView.as_view(), name='superuser-audit-log'),
+
+    # Team member endpoints
+    path('admin/candidates/<int:candidate_id>/team/', views.AdminTeamMemberListCreateView.as_view(), name='admin-team-members'),
+    path('admin/team-members/<int:member_id>/', views.AdminTeamMemberDetailView.as_view(), name='admin-team-member-detail'),
+    path('superuser/candidates/<int:candidate_id>/team/', views.SuperuserTeamMemberListCreateView.as_view(), name='superuser-team-members'),
+    path('superuser/team-members/<int:member_id>/', views.SuperuserTeamMemberDetailView.as_view(), name='superuser-team-member-detail'),
 ]

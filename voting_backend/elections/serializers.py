@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import CustomUser, Organization, Election, Candidate, Vote, AuditLog, VoterUpload
+from .models import CustomUser, Organization, Election, Candidate, CandidateTeamMember, Vote, AuditLog, VoterUpload
 from django.utils import timezone
 from django.utils.text import slugify
 import datetime
@@ -63,15 +63,23 @@ class OrganizationSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+class CandidateTeamMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CandidateTeamMember
+        fields = ['id', 'name', 'title', 'photo_url', 'order', 'candidate']
+        read_only_fields = ['id']
+
+
 class CandidateSerializer(serializers.ModelSerializer):
     vote_count = serializers.IntegerField(read_only=True, default=0)
+    team_members = CandidateTeamMemberSerializer(many=True, read_only=True)
 
     class Meta:
         model = Candidate
         fields = [
             'id', 'name', 'description', 'party', 'motto',
             'position', 'photo_url', 'manifesto',
-            'election', 'vote_count', 'created_at'
+            'election', 'vote_count', 'team_members', 'created_at'
         ]
         read_only_fields = ['created_at']
 
