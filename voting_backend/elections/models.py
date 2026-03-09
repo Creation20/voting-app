@@ -1,29 +1,76 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+import secrets
+import string
+
+
+def generate_join_code():
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(8))
+
+
+class Organization(models.Model):
+    class OrgType(models.TextChoices):
+        UNIVERSITY = 'UNIVERSITY', 'University'
+        HIGH_SCHOOL = 'HIGH_SCHOOL', 'High School'
+        GOVERNMENT = 'GOVERNMENT', 'Government'
+        CORPORATE = 'CORPORATE', 'Corporate'
+        COMMUNITY = 'COMMUNITY', 'Community'
+        OTHER = 'OTHER', 'Other'
+
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=100, unique=True)
+    org_type = models.CharField(max_length=20, choices=OrgType.choices, default=OrgType.OTHER)
+    description = models.TextField(blank=True)
+    join_code = models.CharField(max_length=8, unique=True, default=generate_join_code)
+    logo_url = models.URLField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_org_type_display()})"
+
+    def regenerate_join_code(self):
+        self.join_code = generate_join_code()
+        self.save()
 
 
 class CustomUser(AbstractUser):
     class Role(models.TextChoices):
-        USER = 'USER', 'User'
+        USER = 'USER', 'Voter'
         ADMIN = 'ADMIN', 'Admin'
+        ORG_OWNER = 'ORG_OWNER', 'Organization Owner'
         SUPERUSER = 'SUPERUSER', 'Superuser'
 
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.USER)
     email = models.EmailField(unique=True)
+    organization = models.ForeignKey(
+        'Organization', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='members'
+    )
 
     def __str__(self):
         return f"{self.username} ({self.role})"
 
     @property
     def is_admin_user(self):
-        return self.role in (self.Role.ADMIN, self.Role.SUPERUSER)
+        return self.role in (self.Role.ADMIN, self.Role.ORG_OWNER, self.Role.SUPERUSER)
 
     @property
     def is_super_user_role(self):
         return self.role == self.Role.SUPERUSER
 
+    @property
+    def is_org_owner(self):
+        return self.role == self.Role.ORG_OWNER
+
 
 class Election(models.Model):
+    organization = models.ForeignKey(
+        Organization, null=True, blank=True,  # temporarily nullable
+        on_delete=models.CASCADE, related_name='elections'
+    )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     start_time = models.DateTimeField()
@@ -33,8 +80,7 @@ class Election(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.title
-
+        return f"{self.title} ({self.organization.name if self.organization else 'No Org'})"
 
 class Candidate(models.Model):
     election = models.ForeignKey(Election, on_delete=models.CASCADE, related_name='candidates')
@@ -46,7 +92,7 @@ class Candidate(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.name} ({self.party})"
+        return f"{self.name} ({self.election.title})"
 
 
 class Vote(models.Model):

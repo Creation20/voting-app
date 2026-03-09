@@ -6,10 +6,17 @@ export interface LoginResponse {
   role: string
   username: string
   email: string
+  org_id: number | null
+  org_name: string | null
 }
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
   const { data } = await client.post<LoginResponse>('/auth/login/', { username, password })
+  return data
+}
+
+export async function register(username: string, email: string, password: string, joinCode: string): Promise<LoginResponse> {
+  const { data } = await client.post<LoginResponse>('/auth/register/', { username, email, password, join_code: joinCode })
   return data
 }
 

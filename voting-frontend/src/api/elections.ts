@@ -8,6 +8,8 @@ export interface Election {
   end_time: string
   is_active: boolean
   candidates: Candidate[]
+  organization: number
+  org_name?: string
 }
 
 export interface Candidate {
@@ -32,7 +34,7 @@ export interface VoteResult {
   motto: string
   description: string
   vote_count: number
-  percentage?: number  // only present in superuser results
+  percentage?: number
 }
 
 export interface ResultsResponse {
@@ -40,6 +42,31 @@ export interface ResultsResponse {
   total_votes: number
   results: VoteResult[]
 }
+
+export interface Organization {
+  id: number
+  name: string
+  slug: string
+  org_type: string
+  description: string
+  join_code: string
+  logo_url: string
+  is_active: boolean
+  member_count: number
+  election_count: number
+  created_at: string
+}
+
+export interface OrgMember {
+  id: number
+  username: string
+  email: string
+  role: string
+  organization: number
+  org_name: string
+}
+
+// ── Elections ──────────────────────────────────────────────────────────────
 
 export async function getActiveElection(): Promise<Election> {
   const { data } = await client.get<Election>('/elections/active/')
@@ -60,6 +87,8 @@ export async function castVote(electionId: number, candidateId: number) {
   const { data } = await client.post(`/elections/${electionId}/vote/`, { candidate_id: candidateId })
   return data
 }
+
+// ── Admin ──────────────────────────────────────────────────────────────────
 
 export async function getResults(electionId: number): Promise<ResultsResponse> {
   const { data } = await client.get<ResultsResponse>(`/admin/elections/${electionId}/results/`)
@@ -86,7 +115,65 @@ export async function createCandidate(payload: { name: string; party: string; de
   return data
 }
 
-// Superuser endpoints
+// ── Organisation ───────────────────────────────────────────────────────────
+
+export async function lookupOrgByCode(joinCode: string) {
+  const { data } = await client.get(`/org/lookup/${joinCode}/`)
+  return data
+}
+
+export async function getOrgSettings(): Promise<Organization> {
+  const { data } = await client.get<Organization>('/org/settings/')
+  return data
+}
+
+export async function updateOrgSettings(payload: Partial<Organization>): Promise<Organization> {
+  const { data } = await client.patch<Organization>('/org/settings/', payload)
+  return data
+}
+
+export async function regenerateJoinCode(): Promise<{ join_code: string }> {
+  const { data } = await client.post('/org/regenerate-code/')
+  return data
+}
+
+export async function getOrgMembers(): Promise<OrgMember[]> {
+  const { data } = await client.get<OrgMember[]>('/org/members/')
+  return data
+}
+
+export async function updateMemberRole(userId: number, role: string): Promise<OrgMember> {
+  const { data } = await client.patch<OrgMember>(`/org/members/${userId}/`, { role })
+  return data
+}
+
+export async function removeMember(userId: number): Promise<void> {
+  await client.delete(`/org/members/${userId}/`)
+}
+
+// ── Superuser org management ───────────────────────────────────────────────
+
+export async function superuserGetOrgs(): Promise<Organization[]> {
+  const { data } = await client.get<Organization[]>('/superuser/orgs/')
+  return data
+}
+
+export async function superuserCreateOrg(payload: Partial<Organization> & { owner?: { username: string; email: string; password: string } }): Promise<Organization> {
+  const { data } = await client.post<Organization>('/superuser/orgs/', payload)
+  return data
+}
+
+export async function superuserUpdateOrg(id: number, payload: Partial<Organization>): Promise<Organization> {
+  const { data } = await client.patch<Organization>(`/superuser/orgs/${id}/`, payload)
+  return data
+}
+
+export async function superuserDeleteOrg(id: number): Promise<void> {
+  await client.delete(`/superuser/orgs/${id}/`)
+}
+
+// ── Superuser elections ────────────────────────────────────────────────────
+
 export async function superuserGetElections(): Promise<Election[]> {
   const { data } = await client.get<Election[]>('/superuser/elections/')
   return data
@@ -110,6 +197,8 @@ export async function superuserGetResults(electionId: number): Promise<ResultsRe
   const { data } = await client.get<ResultsResponse>(`/superuser/elections/${electionId}/results/`)
   return data
 }
+
+// ── Superuser candidates ───────────────────────────────────────────────────
 
 export async function superuserGetCandidates(): Promise<Candidate[]> {
   const { data } = await client.get<Candidate[]>('/superuser/candidates/')

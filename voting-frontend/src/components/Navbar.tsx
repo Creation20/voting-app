@@ -7,9 +7,9 @@ type ThemeMode = 'dark' | 'light'
 
 const SWATCHES: { color: ThemeColor; label: string }[] = [
   { color: 'purple', label: 'Purple' },
-  { color: 'green',  label: 'Green'  },
-  { color: 'red',    label: 'Red'    },
-  { color: 'blue',   label: 'Blue'   },
+  { color: 'green', label: 'Green' },
+  { color: 'red', label: 'Red' },
+  { color: 'blue', label: 'Blue' },
 ]
 
 function applyTheme(color: ThemeColor, mode: ThemeMode) {
@@ -19,54 +19,56 @@ function applyTheme(color: ThemeColor, mode: ThemeMode) {
 }
 
 export default function Navbar() {
-  const { user, isAdmin, logout } = useAuth()
+  const { user, isAdmin, isOrgOwner, isSuperuser, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-
   const [color, setColor] = useState<ThemeColor>('purple')
-  const [mode, setMode]   = useState<ThemeMode>('dark')
+  const [mode, setMode] = useState<ThemeMode>('dark')
 
   useEffect(() => {
     const savedColor = (localStorage.getItem('theme-color') as ThemeColor) || 'purple'
-    const savedMode  = (localStorage.getItem('theme-mode')  as ThemeMode)  || 'dark'
-    setColor(savedColor)
-    setMode(savedMode)
+    const savedMode = (localStorage.getItem('theme-mode') as ThemeMode) || 'dark'
+    setColor(savedColor); setMode(savedMode)
     applyTheme(savedColor, savedMode)
   }, [])
 
   const handleColor = (c: ThemeColor) => { setColor(c); applyTheme(c, mode) }
-  const handleMode  = () => {
+  const handleMode = () => {
     const next = mode === 'dark' ? 'light' : 'dark'
     setMode(next); applyTheme(color, next)
   }
 
-  const handleLogout = () => { logout(); navigate('/login') }
   const isActive = (path: string) => location.pathname === path
-
   if (!user) return null
+
+  const navLinks = [
+    { to: '/vote', label: 'Vote' },
+    ...(isAdmin ? [{ to: '/admin/results', label: 'Results' }, { to: '/admin/manage', label: 'Manage' }] : []),
+    ...(isOrgOwner ? [{ to: '/org', label: 'Organisation' }] : []),
+    ...(isSuperuser ? [{ to: '/superuser', label: 'Superuser' }] : []),
+  ]
 
   return (
     <header style={{ borderBottom: '1px solid var(--card-border)', background: 'color-mix(in srgb, var(--bg) 92%, transparent)', backdropFilter: 'blur(20px)' }}
       className="sticky top-0 z-50 transition-all duration-300">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
-
-        {/* Logo */}
         <Link to="/" className="flex items-center gap-3 shrink-0">
-          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-base font-bold transition-colors duration-300"
+          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-base font-bold"
             style={{ background: 'var(--accent)', color: 'var(--bg)' }}>✦</div>
-          <span className="display-font text-xl font-bold" style={{ color: 'var(--cream)' }}>VoteApp</span>
+          <div>
+            <span className="display-font text-xl font-bold" style={{ color: 'var(--cream)' }}>VoteApp</span>
+            {user.org_name && (
+              <span className="hidden sm:inline text-xs ml-2" style={{ color: 'var(--muted)' }}>· {user.org_name}</span>
+            )}
+          </div>
         </Link>
 
-        {/* Nav links */}
-        <nav className="flex items-center gap-1">
-          {[
-            { to: '/vote', label: 'Vote' },
-            ...(isAdmin ? [{ to: '/admin/results', label: 'Results' }, { to: '/admin/manage', label: 'Manage' }] : []),
-          ].map(({ to, label }) => (
+        <nav className="flex items-center gap-1 overflow-x-auto">
+          {navLinks.map(({ to, label }) => (
             <Link key={to} to={to}
-              className="px-4 py-2 text-sm font-medium rounded-sm transition-all duration-150"
+              className="px-3 py-2 text-sm font-medium rounded-sm transition-all whitespace-nowrap"
               style={{
-                color:      isActive(to) ? 'var(--accent)' : 'var(--muted)',
+                color: isActive(to) ? 'var(--accent)' : 'var(--muted)',
                 background: isActive(to) ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
               }}>
               {label}
@@ -74,36 +76,27 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* Right side */}
-        <div className="flex items-center gap-3">
-
-          {/* Theme switcher */}
+        <div className="flex items-center gap-3 shrink-0">
           <div className="theme-switcher">
             {SWATCHES.map(s => (
-              <button key={s.color}
-                className={`theme-swatch ${s.color} ${color === s.color ? 'active' : ''}`}
-                title={s.label}
-                onClick={() => handleColor(s.color)}
-              />
+              <button key={s.color} className={`theme-swatch ${s.color} ${color === s.color ? 'active' : ''}`}
+                title={s.label} onClick={() => handleColor(s.color)} />
             ))}
-            <button
-              className={`mode-toggle ${mode === 'light' ? 'light' : ''}`}
-              onClick={handleMode}
-              title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            />
+            <button className={`mode-toggle ${mode === 'light' ? 'light' : ''}`} onClick={handleMode} />
           </div>
 
-          {/* User info */}
           <div className="hidden sm:flex items-center gap-2">
-            <div className="w-7 h-7 rounded-sm flex items-center justify-center text-xs font-bold transition-colors duration-300"
+            <div className="w-7 h-7 rounded-sm flex items-center justify-center text-xs font-bold"
               style={{ background: 'var(--bg-light)', color: 'var(--accent)', border: '1px solid var(--card-border)' }}>
               {user.username[0].toUpperCase()}
             </div>
             <span className="text-sm" style={{ color: 'var(--muted)' }}>{user.username}</span>
-            {isAdmin && <span className="badge-accent">ADMIN</span>}
+            {isSuperuser && <span className="badge-accent">⚡ SUPER</span>}
+            {isOrgOwner && !isSuperuser && <span className="badge-accent">OWNER</span>}
+            {isAdmin && !isOrgOwner && <span className="badge-accent">ADMIN</span>}
           </div>
 
-          <button onClick={handleLogout}
+          <button onClick={() => { logout(); navigate('/login') }}
             className="text-xs font-medium px-3 py-1.5 rounded-sm transition-all"
             style={{ color: 'var(--muted)', border: '1px solid color-mix(in srgb, var(--muted) 25%, transparent)' }}>
             Sign out
