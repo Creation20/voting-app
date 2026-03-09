@@ -49,6 +49,9 @@ class CustomUser(AbstractUser):
         'Organization', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='members'
     )
+    # Voter-specific fields
+    voter_id = models.CharField(max_length=100, blank=True, help_text='Institutional ID / reference number')
+    full_name = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
         return f"{self.username} ({self.role})"
@@ -67,8 +70,14 @@ class CustomUser(AbstractUser):
 
 
 class Election(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = 'DRAFT', 'Draft'
+        ACTIVE = 'ACTIVE', 'Active'
+        PAUSED = 'PAUSED', 'Paused'
+        ENDED = 'ENDED', 'Ended'
+
     organization = models.ForeignKey(
-        Organization, null=True, blank=True,  # temporarily nullable
+        Organization, null=True, blank=True,
         on_delete=models.CASCADE, related_name='elections'
     )
     title = models.CharField(max_length=255)
@@ -76,11 +85,18 @@ class Election(models.Model):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     is_active = models.BooleanField(default=False)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.title} ({self.organization.name if self.organization else 'No Org'})"
+
+    def save(self, *args, **kwargs):
+        # Keep is_active in sync with status for backwards compat
+        self.is_active = self.status == self.Status.ACTIVE
+        super().save(*args, **kwargs)
+
 
 class Candidate(models.Model):
     election = models.ForeignKey(Election, on_delete=models.CASCADE, related_name='candidates')
@@ -88,6 +104,9 @@ class Candidate(models.Model):
     description = models.TextField(blank=True)
     party = models.CharField(max_length=255, blank=True)
     motto = models.CharField(max_length=500, blank=True)
+    position = models.CharField(max_length=255, blank=True, help_text='e.g. President, Secretary')
+    photo_url = models.URLField(blank=True)
+    manifesto = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -99,6 +118,8 @@ class Vote(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='votes')
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='votes')
     election = models.ForeignKey(Election, on_delete=models.CASCADE, related_name='votes')
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=512, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -106,3 +127,57 @@ class Vote(models.Model):
 
     def __str__(self):
         return f"{self.user.username} voted in {self.election.title}"
+
+
+class AuditLog(models.Model):
+    class Action(models.TextChoices):
+        LOGIN = 'LOGIN', 'Login'
+        LOGOUT = 'LOGOUT', 'Logout'
+        VOTE_CAST = 'VOTE_CAST', 'Vote Cast'
+        ELECTION_CREATED = 'ELECTION_CREATED', 'Election Created'
+        ELECTION_UPDATED = 'ELECTION_UPDATED', 'Election Updated'
+        ELECTION_DELETED = 'ELECTION_DELETED', 'Election Deleted'
+        CANDIDATE_ADDED = 'CANDIDATE_ADDED', 'Candidate Added'
+        CANDIDATE_UPDATED = 'CANDIDATE_UPDATED', 'Candidate Updated'
+        CANDIDATE_DELETED = 'CANDIDATE_DELETED', 'Candidate Deleted'
+        VOTER_UPLOADED = 'VOTER_UPLOADED', 'Voters Uploaded (CSV)'
+        MEMBER_ROLE_CHANGED = 'MEMBER_ROLE_CHANGED', 'Member Role Changed'
+        MEMBER_REMOVED = 'MEMBER_REMOVED', 'Member Removed'
+        JOIN_CODE_REGENERATED = 'JOIN_CODE_REGENERATED', 'Join Code Regenerated'
+        ORG_SETTINGS_UPDATED = 'ORG_SETTINGS_UPDATED', 'Org Settings Updated'
+        LOGIN_FAILED = 'LOGIN_FAILED', 'Login Failed'
+
+    user = models.ForeignKey(
+        CustomUser, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='audit_logs'
+    )
+    organization = models.ForeignKey(
+        Organization, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='audit_logs'
+    )
+    action = models.CharField(max_length=30, choices=Action.choices)
+    detail = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=512, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.action} by {self.user} at {self.created_at}"
+
+
+class VoterUpload(models.Model):
+    """Tracks CSV bulk voter uploads."""
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='voter_uploads')
+    uploaded_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    filename = models.CharField(max_length=255)
+    total_rows = models.IntegerField(default=0)
+    success_count = models.IntegerField(default=0)
+    error_count = models.IntegerField(default=0)
+    errors = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Upload {self.filename} by {self.uploaded_by} ({self.success_count}/{self.total_rows})"

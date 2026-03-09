@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react'
-import { getAdminElections, createElection, updateElection, createCandidate, Election } from '../api/elections'
+import {
+  getAdminElections, createElection, updateElection, deleteElection,
+  createCandidate, Election,
+} from '../api/elections'
 import axios from 'axios'
 
-// Helper: convert datetime-local string to ISO for Django
 function toISO(val: string) {
   if (!val) return ''
   return new Date(val).toISOString()
 }
 
-// Helper: get current datetime-local string for default values
 function nowLocal() {
   const d = new Date()
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
@@ -22,6 +23,13 @@ function futureLocal(days: number) {
   return d.toISOString().slice(0, 16)
 }
 
+const STATUS_OPTIONS = [
+  { value: 'DRAFT', label: '○ Draft', color: 'var(--muted)' },
+  { value: 'ACTIVE', label: '● Active', color: 'var(--success)' },
+  { value: 'PAUSED', label: '⏸ Paused', color: '#f59e0b' },
+  { value: 'ENDED', label: '✕ Ended', color: 'var(--danger)' },
+]
+
 export default function AdminManagePage() {
   const [elections, setElections] = useState<Election[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,13 +40,17 @@ export default function AdminManagePage() {
   const [eDesc, setEDesc] = useState('')
   const [eStart, setEStart] = useState(nowLocal())
   const [eEnd, setEEnd] = useState(futureLocal(7))
-  const [eActive, setEActive] = useState(true)
+  const [eStatus, setEStatus] = useState<string>('DRAFT')
   const [eSaving, setESaving] = useState(false)
 
   const [cElection, setCElection] = useState<number | ''>('')
   const [cName, setCName] = useState('')
   const [cParty, setCParty] = useState('')
+  const [cPosition, setCPosition] = useState('')
+  const [cMotto, setCMotto] = useState('')
   const [cDesc, setCDesc] = useState('')
+  const [cPhotoUrl, setCPhotoUrl] = useState('')
+  const [cManifesto, setCManifesto] = useState('')
   const [cSaving, setCSaving] = useState(false)
 
   const load = () => {
@@ -66,31 +78,38 @@ export default function AdminManagePage() {
         description: eDesc,
         start_time: toISO(eStart),
         end_time: toISO(eEnd),
-        is_active: eActive,
+        status: eStatus,
       })
       flash('Election created successfully!')
-      setETitle('')
-      setEDesc('')
-      setEStart(nowLocal())
-      setEEnd(futureLocal(7))
-      setEActive(true)
+      setETitle(''); setEDesc('')
+      setEStart(nowLocal()); setEEnd(futureLocal(7))
+      setEStatus('DRAFT')
       load()
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data) {
         const data = err.response.data
-        const messages = Object.entries(data)
-          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
-          .join(' | ')
-        flash(messages, true)
+        flash(Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | '), true)
       } else {
         flash('Error creating election. Please try again.', true)
       }
     } finally { setESaving(false) }
   }
 
-  const handleToggle = async (el: Election) => {
-    try { await updateElection(el.id, { is_active: !el.is_active }); load() }
-    catch { flash('Failed to update election.', true) }
+  const handleStatusChange = async (el: Election, newStatus: string) => {
+    try {
+      await updateElection(el.id, { status: newStatus })
+      load()
+      flash(`Election "${el.title}" set to ${newStatus}.`)
+    } catch { flash('Failed to update status.', true) }
+  }
+
+  const handleDeleteElection = async (el: Election) => {
+    if (!confirm(`Delete "${el.title}"? All votes and candidates will be permanently deleted.`)) return
+    try {
+      await deleteElection(el.id)
+      flash(`Election "${el.title}" deleted.`)
+      load()
+    } catch { flash('Failed to delete election.', true) }
   }
 
   const handleCreateCandidate = async (e: React.FormEvent) => {
@@ -98,16 +117,19 @@ export default function AdminManagePage() {
     if (!cElection) return
     setCSaving(true)
     try {
-      await createCandidate({ name: cName, party: cParty, description: cDesc, election: Number(cElection) })
+      await createCandidate({
+        name: cName, party: cParty, description: cDesc,
+        position: cPosition, motto: cMotto,
+        photo_url: cPhotoUrl, manifesto: cManifesto,
+        election: Number(cElection),
+      })
       flash('Candidate added successfully!')
       setCName(''); setCParty(''); setCDesc('')
+      setCPosition(''); setCMotto(''); setCPhotoUrl(''); setCManifesto('')
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data) {
         const data = err.response.data
-        const messages = Object.entries(data)
-          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
-          .join(' | ')
-        flash(messages, true)
+        flash(Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | '), true)
       } else {
         flash('Error adding candidate.', true)
       }
@@ -147,45 +169,30 @@ export default function AdminManagePage() {
       <div className="glass-card p-6 fade-up-1">
         <h2 className="display-font text-lg font-bold mb-5" style={{ color: 'var(--cream)' }}>Create Election</h2>
         <form onSubmit={handleCreateElection} className="space-y-4">
-
           <div>
             <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Title *</label>
             <input className="input-field" placeholder="e.g. Student Council 2025"
               value={eTitle} onChange={e => setETitle(e.target.value)} required />
           </div>
-
           <div>
             <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Description</label>
             <textarea className="input-field" placeholder="Optional description…"
               value={eDesc} onChange={e => setEDesc(e.target.value)} rows={2} />
           </div>
 
-          {/* Date/time pickers — split into date + time for better UX */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="block text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--muted)' }}>
-                Start *
-              </label>
-              <input type="datetime-local" className="input-field"
-                value={eStart} onChange={e => setEStart(e.target.value)} required />
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                {eStart ? new Date(eStart).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
-              </p>
+              <label className="block text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--muted)' }}>Start *</label>
+              <input type="datetime-local" className="input-field" value={eStart} onChange={e => setEStart(e.target.value)} required />
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>{eStart ? new Date(eStart).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</p>
             </div>
             <div className="space-y-2">
-              <label className="block text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--muted)' }}>
-                End *
-              </label>
-              <input type="datetime-local" className="input-field"
-                value={eEnd} onChange={e => setEEnd(e.target.value)}
-                min={eStart} required />
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                {eEnd ? new Date(eEnd).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
-              </p>
+              <label className="block text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--muted)' }}>End *</label>
+              <input type="datetime-local" className="input-field" value={eEnd} onChange={e => setEEnd(e.target.value)} min={eStart} required />
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>{eEnd ? new Date(eEnd).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</p>
             </div>
           </div>
 
-          {/* Duration preview */}
           {eStart && eEnd && new Date(eEnd) > new Date(eStart) && (
             <div className="px-3 py-2 rounded-sm text-xs"
               style={{ background: 'color-mix(in srgb, var(--accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)', color: 'var(--accent)' }}>
@@ -193,16 +200,10 @@ export default function AdminManagePage() {
             </div>
           )}
 
-          {/* Quick presets */}
           <div>
             <p className="text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: 'var(--muted)' }}>Quick presets</p>
             <div className="flex flex-wrap gap-2">
-              {[
-                { label: '1 day', days: 1 },
-                { label: '3 days', days: 3 },
-                { label: '1 week', days: 7 },
-                { label: '2 weeks', days: 14 },
-              ].map(({ label, days }) => (
+              {[{ label: '1 day', days: 1 }, { label: '3 days', days: 3 }, { label: '1 week', days: 7 }, { label: '2 weeks', days: 14 }].map(({ label, days }) => (
                 <button key={label} type="button"
                   onClick={() => { setEStart(nowLocal()); setEEnd(futureLocal(days)) }}
                   className="text-xs px-3 py-1.5 rounded-sm transition-all"
@@ -213,23 +214,26 @@ export default function AdminManagePage() {
             </div>
           </div>
 
-          {/* Active toggle */}
-          <label className="flex items-center gap-3 cursor-pointer select-none">
-            <div onClick={() => setEActive(!eActive)}
-              className="w-10 h-5 rounded-full relative transition-all duration-200 shrink-0"
-              style={{ background: eActive ? 'var(--accent)' : 'color-mix(in srgb, var(--muted) 30%, transparent)' }}>
-              <div className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200"
-                style={{ background: 'white', left: eActive ? '1.375rem' : '0.125rem' }} />
+          <div>
+            <label className="block text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: 'var(--muted)' }}>Initial Status</label>
+            <div className="flex flex-wrap gap-2">
+              {STATUS_OPTIONS.map(s => (
+                <button key={s.value} type="button"
+                  onClick={() => setEStatus(s.value)}
+                  className="text-xs px-4 py-2 rounded-sm font-semibold transition-all"
+                  style={{
+                    color: eStatus === s.value ? 'var(--bg)' : s.color,
+                    background: eStatus === s.value ? s.color : `color-mix(in srgb, ${s.color} 10%, transparent)`,
+                    border: `1px solid color-mix(in srgb, ${s.color} 40%, transparent)`,
+                  }}>
+                  {s.label}
+                </button>
+              ))}
             </div>
-            <span className="text-sm" style={{ color: 'var(--muted)' }}>
-              Mark as active immediately
-            </span>
-          </label>
+          </div>
 
           <button type="submit" disabled={eSaving} className="btn-accent">
-            {eSaving
-              ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Creating…</>
-              : 'Create Election →'}
+            {eSaving ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Creating…</> : 'Create Election →'}
           </button>
         </form>
       </div>
@@ -241,28 +245,44 @@ export default function AdminManagePage() {
             Elections <span className="text-sm font-normal" style={{ color: 'var(--muted)' }}>({elections.length})</span>
           </h2>
           <div className="space-y-3">
-            {elections.map(el => (
-              <div key={el.id} className="flex items-center justify-between p-4 rounded-sm"
-                style={{ background: 'color-mix(in srgb, var(--bg) 60%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 10%, transparent)' }}>
-                <div>
-                  <p className="font-semibold text-sm mb-0.5" style={{ color: 'var(--cream)' }}>{el.title}</p>
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                    {new Date(el.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                    {' → '}
-                    {new Date(el.end_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                  </p>
+            {elections.map(el => {
+              const statusOpt = STATUS_OPTIONS.find(s => s.value === el.status) || STATUS_OPTIONS[0]
+              return (
+                <div key={el.id} className="p-4 rounded-sm"
+                  style={{ background: 'color-mix(in srgb, var(--bg) 60%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 10%, transparent)' }}>
+                  <div className="flex items-start gap-4 justify-between flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm mb-0.5" style={{ color: 'var(--cream)' }}>{el.title}</p>
+                      <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
+                        {new Date(el.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} → {new Date(el.end_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                      </p>
+                      {/* Status buttons */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {STATUS_OPTIONS.map(s => (
+                          <button key={s.value}
+                            onClick={() => handleStatusChange(el, s.value)}
+                            disabled={el.status === s.value}
+                            className="text-xs px-3 py-1 rounded-sm font-semibold transition-all"
+                            style={{
+                              color: el.status === s.value ? 'var(--bg)' : s.color,
+                              background: el.status === s.value ? s.color : `color-mix(in srgb, ${s.color} 8%, transparent)`,
+                              border: `1px solid color-mix(in srgb, ${s.color} ${el.status === s.value ? '100' : '30'}%, transparent)`,
+                              opacity: el.status === s.value ? 1 : 0.7,
+                            }}>
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeleteElection(el)}
+                      className="shrink-0 text-xs px-3 py-1.5 rounded-sm transition-all"
+                      style={{ color: 'var(--danger)', background: 'color-mix(in srgb, var(--danger) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 25%, transparent)' }}>
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <button onClick={() => handleToggle(el)}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-sm tracking-wider transition-all shrink-0 ml-3"
-                  style={{
-                    background: el.is_active ? 'color-mix(in srgb, var(--success) 12%, transparent)' : 'color-mix(in srgb, var(--muted) 10%, transparent)',
-                    color: el.is_active ? 'var(--success)' : 'var(--muted)',
-                    border: el.is_active ? '1px solid color-mix(in srgb, var(--success) 35%, transparent)' : '1px solid color-mix(in srgb, var(--muted) 25%, transparent)',
-                  }}>
-                  {el.is_active ? '● ACTIVE' : '○ INACTIVE'}
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -280,27 +300,46 @@ export default function AdminManagePage() {
                 {elections.map(el => <option key={el.id} value={el.id}>{el.title}</option>)}
               </select>
             </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Name *</label>
-                <input className="input-field" placeholder="Full name"
-                  value={cName} onChange={e => setCName(e.target.value)} required />
+                <input className="input-field" placeholder="Full name" value={cName} onChange={e => setCName(e.target.value)} required />
               </div>
               <div>
-                <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Party</label>
-                <input className="input-field" placeholder="Party or affiliation"
-                  value={cParty} onChange={e => setCParty(e.target.value)} />
+                <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Position</label>
+                <input className="input-field" placeholder="e.g. President" value={cPosition} onChange={e => setCPosition(e.target.value)} />
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Description</label>
-              <textarea className="input-field" placeholder="Brief bio or platform…"
-                value={cDesc} onChange={e => setCDesc(e.target.value)} rows={2} />
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Party</label>
+                <input className="input-field" placeholder="Party or group" value={cParty} onChange={e => setCParty(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Motto</label>
+                <input className="input-field" placeholder='"Together we rise"' value={cMotto} onChange={e => setCMotto(e.target.value)} />
+              </div>
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Photo URL</label>
+              <input type="url" className="input-field" placeholder="https://…" value={cPhotoUrl} onChange={e => setCPhotoUrl(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Description / Bio</label>
+              <textarea className="input-field" placeholder="Brief bio or platform…" value={cDesc} onChange={e => setCDesc(e.target.value)} rows={2} />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: 'var(--muted)' }}>Manifesto</label>
+              <textarea className="input-field" placeholder="Full manifesto / policy statement…" value={cManifesto} onChange={e => setCManifesto(e.target.value)} rows={3} />
+            </div>
+
             <button type="submit" disabled={cSaving} className="btn-accent">
-              {cSaving
-                ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Adding…</>
-                : 'Add Candidate →'}
+              {cSaving ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Adding…</> : 'Add Candidate →'}
             </button>
           </form>
         )}

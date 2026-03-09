@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import CustomUser, Organization, Election, Candidate, Vote
+from .models import CustomUser, Organization, Election, Candidate, Vote, AuditLog, VoterUpload
 from django.utils import timezone
 from django.utils.text import slugify
 import datetime
@@ -32,7 +32,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'email', 'role', 'organization', 'org_name']
+        fields = ['id', 'username', 'email', 'role', 'organization', 'org_name', 'voter_id', 'full_name']
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -68,7 +68,11 @@ class CandidateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Candidate
-        fields = ['id', 'name', 'description', 'party', 'motto', 'election', 'vote_count', 'created_at']
+        fields = [
+            'id', 'name', 'description', 'party', 'motto',
+            'position', 'photo_url', 'manifesto',
+            'election', 'vote_count', 'created_at'
+        ]
         read_only_fields = ['created_at']
 
 
@@ -88,12 +92,25 @@ class ElectionSerializer(serializers.ModelSerializer):
     start_time = FlexibleDateTimeField()
     end_time = FlexibleDateTimeField()
     org_name = serializers.CharField(source='organization.name', read_only=True)
+    total_votes = serializers.SerializerMethodField()
+    voter_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Election
-        fields = ['id', 'title', 'description', 'start_time', 'end_time',
-                  'is_active', 'candidates', 'organization', 'org_name', 'created_at']
-        read_only_fields = ['created_at', 'org_name']
+        fields = [
+            'id', 'title', 'description', 'start_time', 'end_time',
+            'is_active', 'status', 'candidates', 'organization', 'org_name',
+            'total_votes', 'voter_count', 'created_at'
+        ]
+        read_only_fields = ['created_at', 'org_name', 'is_active']
+
+    def get_total_votes(self, obj):
+        return obj.votes.count()
+
+    def get_voter_count(self, obj):
+        if obj.organization:
+            return obj.organization.members.count()
+        return 0
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -133,3 +150,41 @@ class RegisterSerializer(serializers.Serializer):
 
 class VoteSubmitSerializer(serializers.Serializer):
     candidate_id = serializers.IntegerField()
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True, default=None)
+
+    class Meta:
+        model = AuditLog
+        fields = ['id', 'action', 'detail', 'username', 'ip_address', 'created_at']
+
+
+class VoterUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VoterUpload
+        fields = ['id', 'filename', 'total_rows', 'success_count', 'error_count', 'errors', 'created_at']
+
+
+class BulkVoterCSVSerializer(serializers.Serializer):
+    """For parsing a single voter row from CSV."""
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    password = serializers.CharField(required=False, default='')
+    voter_id = serializers.CharField(max_length=100, required=False, default='')
+    full_name = serializers.CharField(max_length=255, required=False, default='')
+
+    def validate_username(self, value):
+        return value.strip()
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+
+class DashboardStatsSerializer(serializers.Serializer):
+    total_voters = serializers.IntegerField()
+    total_votes = serializers.IntegerField()
+    active_elections = serializers.IntegerField()
+    total_elections = serializers.IntegerField()
+    voter_turnout_pct = serializers.FloatField()
+    recent_votes = serializers.IntegerField()

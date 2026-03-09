@@ -1,23 +1,83 @@
+import csv
+import io
+import secrets
+import string
+
 from django.db import IntegrityError
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Organization, Election, Candidate, Vote, CustomUser
+from .models import Organization, Election, Candidate, Vote, CustomUser, AuditLog, VoterUpload
 from .permissions import IsAdminUser, IsOrgOwner, IsSuperUser, BelongsToOrg
 from .serializers import (
     CustomTokenObtainPairSerializer, ElectionSerializer, CandidateSerializer,
     VoteSubmitSerializer, UserSerializer, OrganizationSerializer, RegisterSerializer,
+    AuditLogSerializer, VoterUploadSerializer,
 )
+
+
+def get_client_ip(request):
+    x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded:
+        return x_forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
+def get_user_agent(request):
+    return request.META.get('HTTP_USER_AGENT', '')[:512]
+
+
+def audit(request, action, detail='', org=None, user=None):
+    AuditLog.objects.create(
+        user=user or (request.user if request.user.is_authenticated else None),
+        organization=org or (request.user.organization if request.user.is_authenticated else None),
+        action=action,
+        detail=detail,
+        ip_address=get_client_ip(request),
+        user_agent=get_user_agent(request),
+    )
+
+
+def _build_results_with_percentage(election):
+    candidates = Candidate.objects.filter(election=election).annotate(
+        vote_count=Count('votes')
+    ).order_by('-vote_count')
+    total_votes = Vote.objects.filter(election=election).count()
+    results = []
+    for c in candidates:
+        pct = round((c.vote_count / total_votes * 100), 1) if total_votes > 0 else 0
+        results.append({
+            'id': c.id, 'name': c.name, 'party': c.party,
+            'motto': c.motto, 'description': c.description,
+            'position': c.position, 'photo_url': c.photo_url,
+            'vote_count': c.vote_count, 'percentage': pct,
+        })
+    return total_votes, results
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            # Successful login audit
+            try:
+                user = CustomUser.objects.get(username=request.data.get('username', ''))
+                audit(request, AuditLog.Action.LOGIN, f"User {user.username} logged in", user=user, org=user.organization)
+            except CustomUser.DoesNotExist:
+                pass
+        else:
+            audit(request, AuditLog.Action.LOGIN_FAILED,
+                  f"Failed login attempt for username: {request.data.get('username', '')}")
+        return response
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -35,6 +95,8 @@ class RegisterView(APIView):
             refresh['email'] = user.email
             refresh['org_id'] = user.organization_id
             refresh['org_name'] = user.organization.name if user.organization else None
+            audit(request, AuditLog.Action.LOGIN,
+                  f"New registration: {user.username}", user=user, org=user.organization)
             return Response({
                 'access': str(refresh.access_token),
                 'refresh': str(refresh),
@@ -67,6 +129,42 @@ class OrgByJoinCodeView(APIView):
             })
         except Organization.DoesNotExist:
             return Response({'detail': 'Invalid join code.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ── Dashboard stats ────────────────────────────────────────────────────────────
+
+class AdminDashboardView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        org = request.user.organization
+        total_voters = CustomUser.objects.filter(organization=org).count()
+        total_votes = Vote.objects.filter(election__organization=org).count()
+        active_elections = Election.objects.filter(organization=org, status='ACTIVE').count()
+        total_elections = Election.objects.filter(organization=org).count()
+
+        voter_turnout_pct = 0.0
+        if total_voters > 0:
+            voters_who_voted = CustomUser.objects.filter(
+                organization=org, votes__isnull=False
+            ).distinct().count()
+            voter_turnout_pct = round(voters_who_voted / total_voters * 100, 1)
+
+        # votes in last 24h
+        from datetime import timedelta
+        recent_votes = Vote.objects.filter(
+            election__organization=org,
+            created_at__gte=timezone.now() - timedelta(hours=24)
+        ).count()
+
+        return Response({
+            'total_voters': total_voters,
+            'total_votes': total_votes,
+            'active_elections': active_elections,
+            'total_elections': total_elections,
+            'voter_turnout_pct': voter_turnout_pct,
+            'recent_votes': recent_votes,
+        })
 
 
 # ── Elections (scoped to user's org) ──────────────────────────────────────────
@@ -124,9 +222,18 @@ class VoteView(APIView):
             return Response({'detail': 'Candidate not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            vote = Vote.objects.create(user=request.user, candidate=candidate, election=election)
+            vote = Vote.objects.create(
+                user=request.user,
+                candidate=candidate,
+                election=election,
+                ip_address=get_client_ip(request),
+                user_agent=get_user_agent(request),
+            )
         except IntegrityError:
             return Response({'detail': 'Already voted.'}, status=status.HTTP_409_CONFLICT)
+
+        audit(request, AuditLog.Action.VOTE_CAST,
+              f"{request.user.username} voted for {candidate.name} in '{election.title}'")
 
         return Response({
             'detail': 'Vote cast successfully.',
@@ -151,7 +258,8 @@ class AdminElectionListCreateView(APIView):
         data['organization'] = request.user.organization_id
         serializer = ElectionSerializer(data=data)
         if serializer.is_valid():
-            serializer.save()
+            election = serializer.save()
+            audit(request, AuditLog.Action.ELECTION_CREATED, f"Election '{election.title}' created")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -172,6 +280,8 @@ class AdminElectionDetailView(APIView):
         serializer = ElectionSerializer(election, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            audit(request, AuditLog.Action.ELECTION_UPDATED,
+                  f"Election '{election.title}' updated: {list(request.data.keys())}")
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -179,7 +289,9 @@ class AdminElectionDetailView(APIView):
         election = self.get_object(election_id, request.user.organization)
         if not election:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        title = election.title
         election.delete()
+        audit(request, AuditLog.Action.ELECTION_DELETED, f"Election '{title}' deleted")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -187,7 +299,6 @@ class AdminCandidateListCreateView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request):
-        # Verify election belongs to user's org
         election_id = request.data.get('election')
         try:
             Election.objects.get(pk=election_id, organization=request.user.organization)
@@ -195,7 +306,9 @@ class AdminCandidateListCreateView(APIView):
             return Response({'detail': 'Election not found in your organization.'}, status=status.HTTP_404_NOT_FOUND)
         serializer = CandidateSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            candidate = serializer.save()
+            audit(request, AuditLog.Action.CANDIDATE_ADDED,
+                  f"Candidate '{candidate.name}' added to '{candidate.election.title}'")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -209,19 +322,125 @@ class AdminElectionResultsView(APIView):
         except Election.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        candidates = Candidate.objects.filter(election=election).annotate(
-            vote_count=Count('votes')
-        ).order_by('-vote_count')
-        total_votes = Vote.objects.filter(election=election).count()
-
+        total_votes, results = _build_results_with_percentage(election)
         return Response({
             'election': ElectionSerializer(election).data,
             'total_votes': total_votes,
-            'results': [
-                {'id': c.id, 'name': c.name, 'party': c.party, 'description': c.description, 'vote_count': c.vote_count}
-                for c in candidates
-            ],
+            'results': results,
         })
+
+
+# ── CSV Voter Upload ──────────────────────────────────────────────────────────
+
+class AdminVoterUploadView(APIView):
+    permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        csv_file = request.FILES.get('file')
+        if not csv_file:
+            return Response({'detail': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not csv_file.name.endswith('.csv'):
+            return Response({'detail': 'File must be a CSV.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        org = request.user.organization
+        decoded = csv_file.read().decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(decoded))
+
+        required_cols = {'username', 'email', 'password'}
+        if not required_cols.issubset(set(reader.fieldnames or [])):
+            return Response({
+                'detail': f'CSV must contain columns: {", ".join(required_cols)}. '
+                          f'Optional: voter_id, full_name'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        rows = list(reader)
+        success_count = 0
+        error_count = 0
+        errors = []
+
+        for i, row in enumerate(rows, start=2):  # row 1 = header
+            username = row.get('username', '').strip()
+            email = row.get('email', '').strip().lower()
+            password = row.get('password', '').strip()
+            voter_id = row.get('voter_id', '').strip()
+            full_name = row.get('full_name', '').strip()
+
+            if not username or not email or not password:
+                errors.append(f"Row {i}: username, email, password are required.")
+                error_count += 1
+                continue
+
+            if CustomUser.objects.filter(username=username).exists():
+                errors.append(f"Row {i}: Username '{username}' already exists.")
+                error_count += 1
+                continue
+
+            if CustomUser.objects.filter(email=email).exists():
+                errors.append(f"Row {i}: Email '{email}' already registered.")
+                error_count += 1
+                continue
+
+            try:
+                CustomUser.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=password,
+                    organization=org,
+                    role='USER',
+                    voter_id=voter_id,
+                    full_name=full_name,
+                )
+                success_count += 1
+            except Exception as e:
+                errors.append(f"Row {i}: {str(e)}")
+                error_count += 1
+
+        upload = VoterUpload.objects.create(
+            organization=org,
+            uploaded_by=request.user,
+            filename=csv_file.name,
+            total_rows=len(rows),
+            success_count=success_count,
+            error_count=error_count,
+            errors=errors,
+        )
+
+        audit(request, AuditLog.Action.VOTER_UPLOADED,
+              f"CSV upload: {success_count} voters created, {error_count} errors from '{csv_file.name}'")
+
+        return Response(VoterUploadSerializer(upload).data, status=status.HTTP_201_CREATED)
+
+    def get(self, request):
+        """List past uploads for this org."""
+        uploads = VoterUpload.objects.filter(organization=request.user.organization).order_by('-created_at')[:20]
+        return Response(VoterUploadSerializer(uploads, many=True).data)
+
+
+# ── Voter Management ──────────────────────────────────────────────────────────
+
+class AdminVoterListView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        """List all voters in this org."""
+        voters = CustomUser.objects.filter(
+            organization=request.user.organization, role='USER'
+        ).order_by('username')
+        return Response(UserSerializer(voters, many=True).data)
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────────
+
+class AdminAuditLogView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        logs = AuditLog.objects.filter(
+            organization=request.user.organization
+        ).select_related('user').order_by('-created_at')[:200]
+        return Response(AuditLogSerializer(logs, many=True).data)
 
 
 # ── Org Owner ─────────────────────────────────────────────────────────────────
@@ -234,7 +453,6 @@ class OrgMembersView(APIView):
         return Response(UserSerializer(members, many=True).data)
 
     def patch(self, request, user_id):
-        """Change a member's role."""
         try:
             member = CustomUser.objects.get(pk=user_id, organization=request.user.organization)
         except CustomUser.DoesNotExist:
@@ -242,21 +460,25 @@ class OrgMembersView(APIView):
         new_role = request.data.get('role')
         if new_role not in ('USER', 'ADMIN'):
             return Response({'detail': 'Invalid role. Choose USER or ADMIN.'}, status=status.HTTP_400_BAD_REQUEST)
+        old_role = member.role
         member.role = new_role
         member.save()
+        audit(request, AuditLog.Action.MEMBER_ROLE_CHANGED,
+              f"{member.username} role changed {old_role} → {new_role}")
         return Response(UserSerializer(member).data)
 
     def delete(self, request, user_id):
-        """Remove a member from the org."""
         try:
             member = CustomUser.objects.get(pk=user_id, organization=request.user.organization)
         except CustomUser.DoesNotExist:
             return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
         if member == request.user:
             return Response({'detail': 'Cannot remove yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+        username = member.username
         member.organization = None
         member.role = 'USER'
         member.save()
+        audit(request, AuditLog.Action.MEMBER_REMOVED, f"Member '{username}' removed from org")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -270,6 +492,7 @@ class OrgSettingsView(APIView):
         serializer = OrganizationSerializer(request.user.organization, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            audit(request, AuditLog.Action.ORG_SETTINGS_UPDATED, "Organisation settings updated")
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -280,26 +503,11 @@ class RegenerateJoinCodeView(APIView):
     def post(self, request):
         org = request.user.organization
         org.regenerate_join_code()
+        audit(request, AuditLog.Action.JOIN_CODE_REGENERATED, "Join code regenerated")
         return Response({'join_code': org.join_code})
 
 
 # ── Superuser (global) ────────────────────────────────────────────────────────
-
-def _build_results_with_percentage(election):
-    candidates = Candidate.objects.filter(election=election).annotate(
-        vote_count=Count('votes')
-    ).order_by('-vote_count')
-    total_votes = Vote.objects.filter(election=election).count()
-    results = []
-    for c in candidates:
-        pct = round((c.vote_count / total_votes * 100), 1) if total_votes > 0 else 0
-        results.append({
-            'id': c.id, 'name': c.name, 'party': c.party,
-            'motto': c.motto, 'description': c.description,
-            'vote_count': c.vote_count, 'percentage': pct,
-        })
-    return total_votes, results
-
 
 class SuperuserOrgListCreateView(APIView):
     permission_classes = [IsSuperUser]
@@ -315,7 +523,6 @@ class SuperuserOrgListCreateView(APIView):
         serializer = OrganizationSerializer(data=request.data)
         if serializer.is_valid():
             org = serializer.save()
-            # Create the org owner account if provided
             owner_data = request.data.get('owner')
             if owner_data:
                 owner = CustomUser.objects.create_user(
@@ -460,3 +667,33 @@ class SuperuserCandidateDetailView(APIView):
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         candidate.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SuperuserAuditLogView(APIView):
+    permission_classes = [IsSuperUser]
+
+    def get(self, request):
+        org_id = request.query_params.get('org_id')
+        logs = AuditLog.objects.select_related('user', 'organization').order_by('-created_at')
+        if org_id:
+            logs = logs.filter(organization_id=org_id)
+        logs = logs[:500]
+        return Response(AuditLogSerializer(logs, many=True).data)
+
+
+class SuperuserDashboardView(APIView):
+    permission_classes = [IsSuperUser]
+
+    def get(self, request):
+        total_orgs = Organization.objects.filter(is_active=True).count()
+        total_voters = CustomUser.objects.filter(role='USER').count()
+        total_votes = Vote.objects.count()
+        active_elections = Election.objects.filter(status='ACTIVE').count()
+        total_elections = Election.objects.count()
+        return Response({
+            'total_orgs': total_orgs,
+            'total_voters': total_voters,
+            'total_votes': total_votes,
+            'active_elections': active_elections,
+            'total_elections': total_elections,
+        })

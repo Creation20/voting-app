@@ -38,12 +38,18 @@ export default function Navbar() {
     setMode(next); applyTheme(color, next)
   }
 
-  const isActive = (path: string) => location.pathname === path
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/')
   if (!user) return null
 
   const navLinks = [
     { to: '/vote', label: 'Vote' },
-    ...(isAdmin ? [{ to: '/admin/results', label: 'Results' }, { to: '/admin/manage', label: 'Manage' }] : []),
+    ...(isAdmin ? [
+      { to: '/admin/dashboard', label: 'Dashboard' },
+      { to: '/admin/results', label: 'Results' },
+      { to: '/admin/manage', label: 'Elections' },
+      { to: '/admin/voters', label: 'Voters' },
+      { to: '/admin/audit', label: 'Audit' },
+    ] : []),
     ...(isOrgOwner ? [{ to: '/org', label: 'Organisation' }] : []),
     ...(isSuperuser ? [{ to: '/superuser', label: 'Superuser' }] : []),
   ]
@@ -51,7 +57,7 @@ export default function Navbar() {
   return (
     <header style={{ borderBottom: '1px solid var(--card-border)', background: 'color-mix(in srgb, var(--bg) 92%, transparent)', backdropFilter: 'blur(20px)' }}
       className="sticky top-0 z-50 transition-all duration-300">
-      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
         <Link to="/" className="flex items-center gap-3 shrink-0">
           <div className="w-8 h-8 rounded-sm flex items-center justify-center text-base font-bold"
             style={{ background: 'var(--accent)', color: 'var(--bg)' }}>✦</div>
@@ -63,10 +69,10 @@ export default function Navbar() {
           </div>
         </Link>
 
-        <nav className="flex items-center gap-1 overflow-x-auto">
+        <nav className="flex items-center gap-0.5 overflow-x-auto">
           {navLinks.map(({ to, label }) => (
             <Link key={to} to={to}
-              className="px-3 py-2 text-sm font-medium rounded-sm transition-all whitespace-nowrap"
+              className="px-3 py-2 text-xs font-semibold rounded-sm transition-all whitespace-nowrap tracking-wide"
               style={{
                 color: isActive(to) ? 'var(--accent)' : 'var(--muted)',
                 background: isActive(to) ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',

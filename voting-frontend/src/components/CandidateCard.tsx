@@ -14,6 +14,7 @@ export default function CandidateCard({ candidate, hasVoted, votedCandidateId, o
   const isMyVote = votedCandidateId === candidate.id
   const isDisabled = hasVoted || isSubmitting
   const [confirming, setConfirming] = useState(false)
+  const [showManifesto, setShowManifesto] = useState(false)
 
   const handleClick = () => {
     if (isDisabled) return
@@ -35,14 +36,23 @@ export default function CandidateCard({ candidate, hasVoted, votedCandidateId, o
       }}>
       <div className="flex items-start justify-between gap-6">
         <div className="flex gap-4 flex-1 min-w-0">
-          <div className="shrink-0 w-10 h-10 rounded-sm flex items-center justify-center text-sm font-bold display-font"
-            style={{
-              background: isMyVote ? 'var(--accent)' : 'color-mix(in srgb, var(--accent) 12%, transparent)',
-              color: isMyVote ? 'var(--bg)' : 'var(--accent)',
-              border: isMyVote ? 'none' : '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
-            }}>
-            {String(index + 1).padStart(2, '0')}
-          </div>
+          {/* Photo or number */}
+          {candidate.photo_url ? (
+            <img src={candidate.photo_url} alt={candidate.name}
+              className="shrink-0 w-12 h-12 rounded-sm object-cover"
+              style={{ border: '2px solid color-mix(in srgb, var(--accent) 30%, transparent)' }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          ) : (
+            <div className="shrink-0 w-10 h-10 rounded-sm flex items-center justify-center text-sm font-bold display-font"
+              style={{
+                background: isMyVote ? 'var(--accent)' : 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                color: isMyVote ? 'var(--bg)' : 'var(--accent)',
+                border: isMyVote ? 'none' : '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
+              }}>
+              {String(index + 1).padStart(2, '0')}
+            </div>
+          )}
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <h3 className="display-font text-lg font-bold" style={{ color: 'var(--cream)' }}>
@@ -50,6 +60,15 @@ export default function CandidateCard({ candidate, hasVoted, votedCandidateId, o
               </h3>
               {isMyVote && <span className="badge-green">✓ YOUR VOTE</span>}
             </div>
+
+            {/* Position */}
+            {candidate.position && (
+              <p className="text-xs font-semibold mb-1 tracking-widest uppercase"
+                style={{ color: 'var(--cream)', opacity: 0.7 }}>
+                {candidate.position}
+              </p>
+            )}
+
             {candidate.party && (
               <p className="text-xs font-semibold mb-1 tracking-widest uppercase" style={{ color: 'var(--accent)' }}>
                 {candidate.party}
@@ -64,6 +83,27 @@ export default function CandidateCard({ candidate, hasVoted, votedCandidateId, o
               <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>
                 {candidate.description}
               </p>
+            )}
+
+            {/* Manifesto toggle */}
+            {candidate.manifesto && (
+              <div className="mt-3">
+                <button onClick={() => setShowManifesto(!showManifesto)}
+                  className="text-xs font-semibold tracking-wide transition-all"
+                  style={{ color: 'var(--accent)' }}>
+                  {showManifesto ? '▲ Hide manifesto' : '▼ Read manifesto'}
+                </button>
+                {showManifesto && (
+                  <div className="mt-2 p-3 rounded-sm text-sm leading-relaxed"
+                    style={{
+                      background: 'color-mix(in srgb, var(--accent) 4%, transparent)',
+                      border: '1px solid color-mix(in srgb, var(--accent) 15%, transparent)',
+                      color: 'var(--muted)',
+                    }}>
+                    {candidate.manifesto}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -7,9 +7,12 @@ export interface Election {
   start_time: string
   end_time: string
   is_active: boolean
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED'
   candidates: Candidate[]
   organization: number
   org_name?: string
+  total_votes?: number
+  voter_count?: number
 }
 
 export interface Candidate {
@@ -18,6 +21,9 @@ export interface Candidate {
   description: string
   party: string
   motto: string
+  position: string
+  photo_url: string
+  manifesto: string
   election: number
   vote_count?: number
 }
@@ -33,6 +39,8 @@ export interface VoteResult {
   party: string
   motto: string
   description: string
+  position: string
+  photo_url: string
   vote_count: number
   percentage?: number
 }
@@ -64,6 +72,36 @@ export interface OrgMember {
   role: string
   organization: number
   org_name: string
+  voter_id?: string
+  full_name?: string
+}
+
+export interface AuditLog {
+  id: number
+  action: string
+  detail: string
+  username: string | null
+  ip_address: string | null
+  created_at: string
+}
+
+export interface DashboardStats {
+  total_voters: number
+  total_votes: number
+  active_elections: number
+  total_elections: number
+  voter_turnout_pct: number
+  recent_votes: number
+}
+
+export interface VoterUploadResult {
+  id: number
+  filename: string
+  total_rows: number
+  success_count: number
+  error_count: number
+  errors: string[]
+  created_at: string
 }
 
 // ── Elections ──────────────────────────────────────────────────────────────
@@ -90,6 +128,11 @@ export async function castVote(electionId: number, candidateId: number) {
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 
+export async function getAdminDashboard(): Promise<DashboardStats> {
+  const { data } = await client.get<DashboardStats>('/admin/dashboard/')
+  return data
+}
+
 export async function getResults(electionId: number): Promise<ResultsResponse> {
   const { data } = await client.get<ResultsResponse>(`/admin/elections/${electionId}/results/`)
   return data
@@ -110,8 +153,36 @@ export async function updateElection(id: number, payload: Partial<Election>): Pr
   return data
 }
 
-export async function createCandidate(payload: { name: string; party: string; description: string; election: number }): Promise<Candidate> {
+export async function deleteElection(id: number): Promise<void> {
+  await client.delete(`/admin/elections/${id}/`)
+}
+
+export async function createCandidate(payload: Partial<Candidate>): Promise<Candidate> {
   const { data } = await client.post<Candidate>('/admin/candidates/', payload)
+  return data
+}
+
+export async function getAdminVoters(): Promise<OrgMember[]> {
+  const { data } = await client.get<OrgMember[]>('/admin/voters/')
+  return data
+}
+
+export async function uploadVotersCSV(file: File): Promise<VoterUploadResult> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await client.post<VoterUploadResult>('/admin/voters/upload/', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}
+
+export async function getVoterUploads(): Promise<VoterUploadResult[]> {
+  const { data } = await client.get<VoterUploadResult[]>('/admin/voters/upload/')
+  return data
+}
+
+export async function getAuditLog(): Promise<AuditLog[]> {
+  const { data } = await client.get<AuditLog[]>('/admin/audit-log/')
   return data
 }
 
@@ -172,8 +243,6 @@ export async function superuserDeleteOrg(id: number): Promise<void> {
   await client.delete(`/superuser/orgs/${id}/`)
 }
 
-// ── Superuser elections ────────────────────────────────────────────────────
-
 export async function superuserGetElections(): Promise<Election[]> {
   const { data } = await client.get<Election[]>('/superuser/elections/')
   return data
@@ -198,14 +267,12 @@ export async function superuserGetResults(electionId: number): Promise<ResultsRe
   return data
 }
 
-// ── Superuser candidates ───────────────────────────────────────────────────
-
 export async function superuserGetCandidates(): Promise<Candidate[]> {
   const { data } = await client.get<Candidate[]>('/superuser/candidates/')
   return data
 }
 
-export async function superuserCreateCandidate(payload: { name: string; party: string; motto: string; description?: string; election: number }): Promise<Candidate> {
+export async function superuserCreateCandidate(payload: Partial<Candidate>): Promise<Candidate> {
   const { data } = await client.post<Candidate>('/superuser/candidates/', payload)
   return data
 }
@@ -217,4 +284,23 @@ export async function superuserUpdateCandidate(id: number, payload: Partial<Cand
 
 export async function superuserDeleteCandidate(id: number): Promise<void> {
   await client.delete(`/superuser/candidates/${id}/`)
+}
+
+export async function superuserGetAuditLog(orgId?: number): Promise<AuditLog[]> {
+  const url = orgId ? `/superuser/audit-log/?org_id=${orgId}` : '/superuser/audit-log/'
+  const { data } = await client.get<AuditLog[]>(url)
+  return data
+}
+
+export interface SuperuserStats {
+  total_orgs: number
+  total_voters: number
+  total_votes: number
+  active_elections: number
+  total_elections: number
+}
+
+export async function superuserGetDashboard(): Promise<SuperuserStats> {
+  const { data } = await client.get<SuperuserStats>('/superuser/dashboard/')
+  return data
 }

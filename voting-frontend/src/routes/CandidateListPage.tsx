@@ -1,9 +1,15 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getAllElections, getCandidates, castVote, Election, Candidate } from '../api/elections'
 import CandidateCard from '../components/CandidateCard'
+import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
 
+const AUTO_LOGOUT_SECONDS = 10
+
 export default function CandidateListPage() {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
   const [elections, setElections] = useState<Election[]>([])
   const [selected, setSelected] = useState<Election | null>(null)
   const [candidates, setCandidates] = useState<Candidate[]>([])
@@ -13,6 +19,8 @@ export default function CandidateListPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
+  const [justVoted, setJustVoted] = useState(false)
+  const [countdown, setCountdown] = useState(AUTO_LOGOUT_SECONDS)
 
   useEffect(() => {
     getAllElections()
@@ -32,6 +40,7 @@ export default function CandidateListPage() {
     setCandidates([])
     setSuccessMsg('')
     setError('')
+    setJustVoted(false)
     getCandidates(selected.id)
       .then(({ candidates: c, voted_candidate_id }) => {
         setCandidates(c)
@@ -40,6 +49,24 @@ export default function CandidateListPage() {
       .catch(() => setError('Failed to load candidates.'))
       .finally(() => setCandidatesLoading(false))
   }, [selected])
+
+  // Auto-logout countdown after voting
+  useEffect(() => {
+    if (!justVoted) return
+    setCountdown(AUTO_LOGOUT_SECONDS)
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval)
+          logout()
+          navigate('/login')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [justVoted, logout, navigate])
 
   const handleVote = async (candidateId: number) => {
     if (!selected) return
@@ -50,6 +77,7 @@ export default function CandidateListPage() {
       setVotedCandidateId(candidateId)
       const candidate = candidates.find(c => c.id === candidateId)
       setSuccessMsg(`Your vote for ${candidate?.name} has been recorded.`)
+      setJustVoted(true)
     } catch (err) {
       if (axios.isAxiosError(err)) {
         if (err.response?.status === 409) setError('You have already voted in this election.')
@@ -121,7 +149,7 @@ export default function CandidateListPage() {
           <div className="flex items-center gap-2 mb-3">
             {isVotable
               ? <><div className="pulse-dot" /><span className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--accent)' }}>Live Election</span></>
-              : <span className="badge-muted">{Date.now() < new Date(selected.start_time).getTime() ? 'UPCOMING' : 'CLOSED'}</span>
+              : <span className="badge-muted">{Date.now() < new Date(selected.start_time).getTime() ? 'UPCOMING' : selected.status}</span>
             }
           </div>
           <h1 className="display-font text-4xl font-black mb-3" style={{ color: 'var(--cream)', lineHeight: 1.1 }}>
@@ -144,8 +172,23 @@ export default function CandidateListPage() {
 
       <hr style={{ borderColor: 'var(--card-border)', marginBottom: '2rem' }} />
 
+      {/* Auto-logout countdown banner */}
+      {justVoted && (
+        <div className="fade-up flex items-center justify-between px-5 py-4 rounded-sm mb-6"
+          style={{ background: 'color-mix(in srgb, var(--accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)' }}>
+          <div>
+            <p className="font-semibold text-sm" style={{ color: 'var(--accent)' }}>Vote recorded! Signing you out…</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>You will be automatically logged out for security.</p>
+          </div>
+          <div className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center display-font text-xl font-black"
+            style={{ background: 'var(--accent)', color: 'var(--bg)' }}>
+            {countdown}
+          </div>
+        </div>
+      )}
+
       {/* Banners */}
-      {successMsg && (
+      {successMsg && !justVoted && (
         <div className="fade-up flex items-start gap-3 px-5 py-4 rounded-sm mb-6"
           style={{ background: 'color-mix(in srgb, var(--success) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--success) 30%, transparent)' }}>
           <span style={{ color: 'var(--success)', fontSize: 18 }}>✓</span>
@@ -161,13 +204,13 @@ export default function CandidateListPage() {
           <span>⚠</span> {error}
         </div>
       )}
-      {!isVotable && selected && !error && (
+      {!isVotable && selected && !error && !justVoted && (
         <div className="flex items-center gap-3 px-5 py-4 rounded-sm mb-6 text-sm"
           style={{ background: 'color-mix(in srgb, var(--muted) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--muted) 15%, transparent)', color: 'var(--muted)' }}>
           <span>🔒</span> This election is not currently open for voting.
         </div>
       )}
-      {votedCandidateId && !successMsg && (
+      {votedCandidateId && !successMsg && !justVoted && (
         <div className="flex items-center gap-3 px-5 py-4 rounded-sm mb-6 text-sm"
           style={{ background: 'color-mix(in srgb, var(--accent) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)', color: 'var(--accent)' }}>
           <span>ℹ</span> You have already cast your vote in this election.
